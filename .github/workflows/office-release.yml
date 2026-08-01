@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: office-release-${{ github.ref }}
+  group: office-release-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
