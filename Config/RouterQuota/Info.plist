@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleDevelopmentRegion</key><string>en</string>
+<key>CFBundleDisplayName</key><string>Router Quota</string>
+<key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+<key>CFBundleIconFile</key><string>RouterQuota.icns</string>
+<key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+<key>CFBundleName</key><string>Router Quota</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
+<key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+<key>CFBundleURLTypes</key>
+<array><dict>
+<key>CFBundleURLName</key><string>com.routerquota.app.provider</string>
+<key>CFBundleURLSchemes</key><array><string>routerquota</string></array>
+</dict></array>
+<key>LSMinimumSystemVersion</key><string>14.0</string>
+<key>LSUIElement</key><true/>
+<key>SUAllowsAutomaticUpdates</key><true/>
+<key>SUAutomaticallyUpdate</key><true/>
+<key>SUEnableAutomaticChecks</key><true/>
+<key>SUFeedURL</key><string>https://github.com/tufw95/router-quota/releases/latest/download/appcast.xml</string>
+<key>SUPublicEDKey</key><string>M3PQhg/ygRWtEttOkX73X9GXG4LXfCwMDNr/aUoxUMQ=</string>
+<key>SURequireSignedFeed</key><true/>
+<key>SUScheduledCheckInterval</key><integer>3600</integer>
+<key>SUSignedFeedFailureExpirationInterval</key><integer>0</integer>
+<key>SUVerifyUpdateBeforeExtraction</key><true/>
+</dict></plist>

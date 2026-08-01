@@ -1,0 +1,85 @@
+import Foundation
+import Testing
+@testable import RouterQuotaCore
+
+@Test func endpointConstruction() throws {
+    let base = try #require(URL(string: "https://router.example.com/internal"))
+    #expect(QuotaService.quotaURL(from: base).absoluteString == "https://router.example.com/internal/v1/quota")
+    #expect(OmniQuotaService.quotaURL(from: base).absoluteString == "https://router.example.com/internal/api/usage/quota")
+
+    let nineEndpoint = try #require(URL(string: "https://router.example.com/v1/quota"))
+    let omniEndpoint = try #require(URL(string: "https://router.example.com/api/usage/quota"))
+    #expect(QuotaService.quotaURL(from: nineEndpoint) == nineEndpoint)
+    #expect(OmniQuotaService.quotaURL(from: omniEndpoint) == omniEndpoint)
+    #expect(OmniQuotaService.providerLimitsURL(from: omniEndpoint).absoluteString == "https://router.example.com/api/usage/provider-limits")
+}
+
+@Test func omniParserReadsQuotaAndReset() throws {
+    let json = Data(#"{"providers":[{"connectionId":"omni-1","provider":"omni","name":"Work","status":"valid","quota":{"percentRemaining":64,"resetAt":"2026-08-02T00:00:00Z"}}]}"#.utf8)
+    let response = try OmniQuotaService.decodeResponse(json)
+    #expect(response.accounts.count == 1)
+    #expect(response.accounts.first?.primaryQuota?.remaining == 64)
+    #expect(response.accounts.first?.primaryQuota?.resetAt == "2026-08-02T00:00:00Z")
+}
+
+@Test func sharedSnapshotRoundTrip() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let store = SharedQuotaStore(fileURL: directory.appendingPathComponent("snapshot.json"))
+    let account = CodexQuotaAccount(
+        id: "9r-1", provider: "9router", label: "Primary", plan: "Pro", limitReached: false,
+        quotas: [CodexQuotaWindow(key: "session", used: 25, total: 100, remaining: 75, resetAt: nil, unlimited: false)],
+        resetCredits: .init(availableCount: 0), status: "valid", errorCode: nil
+    )
+    let snapshot = RouterQuotaSnapshot(accounts: [account], generatedAt: Date(timeIntervalSince1970: 1_700_000_000))
+    try store.save(snapshot)
+    #expect(store.load() == snapshot)
+    try? FileManager.default.removeItem(at: directory)
+}
+
+@Test func providerFilteringSeparatesSources() {
+    let make: (String, String) -> CodexQuotaAccount = { id, provider in
+        CodexQuotaAccount(id: id, provider: provider, label: id, plan: "", limitReached: false, quotas: [], resetCredits: .init(availableCount: 0), status: "valid", errorCode: nil)
+    }
+    let snapshot = RouterQuotaSnapshot(accounts: [make("a", "9router"), make("b", "omni")])
+    #expect(snapshot.accounts(for: LegacyProviderID.nineRouter).map(\.id) == ["a"])
+    #expect(snapshot.accounts(for: LegacyProviderID.omniRouter).map(\.id) == ["b"])
+}
+
+@Test func customProviderEncodingNeverContainsAPIKey() throws {
+    let provider = CustomQuotaProvider(
+        name: "Private Router",
+        endpoint: "https://router.example.com",
+        apiKey: "super-secret-value"
+    )
+    let data = try JSONEncoder().encode(provider)
+    let encoded = try #require(String(data: data, encoding: .utf8))
+    #expect(!encoded.contains("super-secret-value"))
+
+    let decoded = try JSONDecoder().decode(CustomQuotaProvider.self, from: data)
+    #expect(decoded.apiKey.isEmpty)
+    #expect(decoded.name == provider.name)
+}
+
+@Test func providerSnapshotKeepsIndependentFreshness() {
+    let first = ProviderQuotaSnapshot(
+        id: UUID(), name: "First", accounts: [],
+        updatedAt: Date(timeIntervalSince1970: 100), lastError: nil
+    )
+    let second = ProviderQuotaSnapshot(
+        id: UUID(), name: "Second", accounts: [],
+        updatedAt: Date(timeIntervalSince1970: 50), lastError: "Offline"
+    )
+    let snapshot = RouterQuotaSnapshot(providers: [first, second])
+    #expect(snapshot.provider(id: first.id)?.updatedAt == first.updatedAt)
+    #expect(snapshot.provider(id: second.id)?.lastError == "Offline")
+}
+
+@Test func importsLegacyProviderCaches() throws {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    let legacyDirectory = home.appendingPathComponent("Library/Application Support/Codex Model Switcher")
+    guard FileManager.default.fileExists(atPath: legacyDirectory.path) else { return }
+    let imported = try #require(SharedQuotaStore().loadLegacySnapshot())
+    #expect(!imported.accounts.isEmpty)
+    #expect(!imported.accounts(for: LegacyProviderID.nineRouter).isEmpty)
+    #expect(!imported.accounts(for: LegacyProviderID.omniRouter).isEmpty)
+}

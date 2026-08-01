@@ -1,0 +1,121 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* RouterQuotaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* RouterQuotaApp.swift */; };
+		A10000000000000000000002 /* QuotaMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* QuotaMonitor.swift */; };
+		A10000000000000000000003 /* QuotaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* QuotaViews.swift */; };
+		A10000000000000000000004 /* QuotaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* QuotaService.swift */; };
+		A10000000000000000000005 /* RouterEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* RouterEndpoint.swift */; };
+		A10000000000000000000006 /* CustomQuotaProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* CustomQuotaProvider.swift */; };
+		A10000000000000000000007 /* SharedQuotaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* SharedQuotaStore.swift */; };
+		A10000000000000000000008 /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* CredentialStore.swift */; };
+		A10000000000000000000009 /* RouterQuotaWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* RouterQuotaWidget.swift */; };
+		A1000000000000000000000A /* RouterQuotaWidget.appex in Embed PlugIns */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* RouterQuotaWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A1000000000000000000000B /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* SwiftUI.framework */; };
+		A1000000000000000000000C /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* WidgetKit.framework */; };
+		A1000000000000000000000D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000002 /* Sparkle */; };
+		A1000000000000000000000E /* UpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* UpdateController.swift */; };
+		A1000000000000000000000F /* RouterQuota.icns in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* RouterQuota.icns */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A30000000000000000000006 /* Embed PlugIns */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (A1000000000000000000000A /* RouterQuotaWidget.appex in Embed PlugIns */, ); name = "Embed PlugIns"; runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* RouterQuotaApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouterQuotaApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* QuotaMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaMonitor.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* QuotaViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaViews.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* QuotaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaService.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* RouterEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouterEndpoint.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* CustomQuotaProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomQuotaProvider.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* SharedQuotaStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedQuotaStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* CredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* RouterQuotaWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouterQuotaWidget.swift; sourceTree = "<group>"; };
+		A2000000000000000000000A /* RouterQuotaWidget.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = RouterQuotaWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A2000000000000000000000D /* RouterQuota.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RouterQuota.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A2000000000000000000000E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A2000000000000000000000F /* WidgetInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = WidgetInfo.plist; sourceTree = "<group>"; };
+		A20000000000000000000010 /* RouterQuota.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RouterQuota.entitlements; sourceTree = "<group>"; };
+		A20000000000000000000011 /* RouterQuotaWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RouterQuotaWidget.entitlements; sourceTree = "<group>"; };
+		A20000000000000000000012 /* UpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateController.swift; sourceTree = "<group>"; };
+		A20000000000000000000013 /* RouterQuota.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = RouterQuota.icns; sourceTree = "<group>"; };
+		A2000000000000000000000B /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		A2000000000000000000000C /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A30000000000000000000002 /* RouterQuota Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A1000000000000000000000B /* SwiftUI.framework in Frameworks */, A1000000000000000000000D /* Sparkle in Frameworks */, ); runOnlyForDeploymentPostprocessing = 0; };
+		A30000000000000000000003 /* RouterQuotaWidget Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A1000000000000000000000B /* SwiftUI.framework in Frameworks */, A1000000000000000000000C /* WidgetKit.framework in Frameworks */, ); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A40000000000000000000001 = {isa = PBXGroup; children = (A40000000000000000000002 /* RouterQuota */, A40000000000000000000003 /* RouterQuotaWidget */, A40000000000000000000004 /* Core */, A40000000000000000000005 /* Config */, A40000000000000000000007 /* Assets */, A40000000000000000000006 /* Products */, ); sourceTree = "<group>"; };
+		A40000000000000000000002 /* RouterQuota */ = {isa = PBXGroup; children = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000003, A20000000000000000000012, ); path = Sources/RouterQuota; sourceTree = "<group>"; };
+		A40000000000000000000003 /* RouterQuotaWidget */ = {isa = PBXGroup; children = (A20000000000000000000009, ); path = Sources/RouterQuotaWidget; sourceTree = "<group>"; };
+		A40000000000000000000004 /* Core */ = {isa = PBXGroup; children = (A20000000000000000000004, A20000000000000000000005, A20000000000000000000006, A20000000000000000000007, A20000000000000000000008, ); path = Sources/RouterQuotaCore; sourceTree = "<group>"; };
+		A40000000000000000000005 /* Config */ = {isa = PBXGroup; children = (A2000000000000000000000E, A2000000000000000000000F, A20000000000000000000010, A20000000000000000000011, ); path = Config/RouterQuota; sourceTree = "<group>"; };
+		A40000000000000000000006 /* Products */ = {isa = PBXGroup; children = (A2000000000000000000000D, A2000000000000000000000A, ); name = Products; sourceTree = "<group>"; };
+		A40000000000000000000007 /* Assets */ = {isa = PBXGroup; children = (A20000000000000000000013 /* RouterQuota.icns */, ); path = Assets; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A50000000000000000000001 /* RouterQuota */ = {isa = PBXNativeTarget; buildConfigurationList = A60000000000000000000001; buildPhases = (A30000000000000000000001, A30000000000000000000002, A30000000000000000000004, A30000000000000000000006, ); buildRules = (); dependencies = (A70000000000000000000001, ); name = RouterQuota; packageProductDependencies = (B20000000000000000000002 /* Sparkle */, ); productName = RouterQuota; productReference = A2000000000000000000000D; productType = "com.apple.product-type.application"; };
+		A50000000000000000000002 /* RouterQuotaWidget */ = {isa = PBXNativeTarget; buildConfigurationList = A60000000000000000000002; buildPhases = (A30000000000000000000005, A30000000000000000000003, A30000000000000000000007, ); buildRules = (); dependencies = (); name = RouterQuotaWidget; productName = RouterQuotaWidget; productReference = A2000000000000000000000A; productType = "com.apple.product-type.app-extension"; };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A80000000000000000000001 /* Project object */ = {isa = PBXProject; attributes = {LastUpgradeCheck = 2630; TargetAttributes = {A50000000000000000000001 = {CreatedOnToolsVersion = 26.3; }; A50000000000000000000002 = {CreatedOnToolsVersion = 26.3; }; }; }; buildConfigurationList = A60000000000000000000003; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base, ); mainGroup = A40000000000000000000001; packageReferences = (B10000000000000000000001 /* XCRemoteSwiftPackageReference \"Sparkle\" */, ); productRefGroup = A40000000000000000000006; projectDirPath = ""; projectRoot = ""; targets = (A50000000000000000000001, A50000000000000000000002, ); };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A30000000000000000000004 /* RouterQuota Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A1000000000000000000000F /* RouterQuota.icns in Resources */, ); runOnlyForDeploymentPostprocessing = 0; };
+		A30000000000000000000007 /* RouterQuotaWidget Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXBuildFile extra sources */
+/* End PBXBuildFile extra sources */
+
+/* Begin PBXSourcesBuildPhase section */
+		A30000000000000000000001 /* RouterQuota Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000003, A1000000000000000000000E, A10000000000000000000004, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007, A10000000000000000000008, ); runOnlyForDeploymentPostprocessing = 0; };
+		A30000000000000000000005 /* RouterQuotaWidget Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000009, A10000000000000000000004, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007, ); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A70000000000000000000001 = {isa = PBXTargetDependency; target = A50000000000000000000002; targetProxy = A70000000000000000000002; };
+/* End PBXTargetDependency section */
+
+/* Begin PBXContainerItemProxy section */
+		A70000000000000000000002 = {isa = PBXContainerItemProxy; containerPortal = A80000000000000000000001; proxyType = 1; remoteGlobalIDString = A50000000000000000000002; remoteInfo = RouterQuotaWidget; };
+/* End PBXContainerItemProxy section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B10000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/sparkle-project/Sparkle"; requirement = {kind = exactVersion; version = 2.9.4; }; };
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B20000000000000000000002 /* Sparkle */ = {isa = XCSwiftPackageProductDependency; package = B10000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */; productName = Sparkle; };
+/* End XCSwiftPackageProductDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A90000000000000000000001 /* App Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CODE_SIGN_ENTITLEMENTS = Config/RouterQuota/RouterQuota.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_APP_SANDBOX = NO; ENABLE_HARDENED_RUNTIME = YES; INFOPLIST_FILE = Config/RouterQuota/Info.plist; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; MACOSX_DEPLOYMENT_TARGET = 14.0; MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = com.routerquota.app; PRODUCT_NAME = RouterQuota; SWIFT_VERSION = 6.0; }; name = Debug; };
+		A90000000000000000000002 /* App Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; ARCHS = "arm64 x86_64"; CODE_SIGN_ENTITLEMENTS = Config/RouterQuota/RouterQuota.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_APP_SANDBOX = NO; ENABLE_HARDENED_RUNTIME = YES; INFOPLIST_FILE = Config/RouterQuota/Info.plist; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; MACOSX_DEPLOYMENT_TARGET = 14.0; MARKETING_VERSION = 1.0.0; ONLY_ACTIVE_ARCH = NO; PRODUCT_BUNDLE_IDENTIFIER = com.routerquota.app; PRODUCT_NAME = RouterQuota; SWIFT_VERSION = 6.0; }; name = Release; };
+		A90000000000000000000003 /* Widget Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_ENTITLEMENTS = Config/RouterQuota/RouterQuotaWidget.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_APP_SANDBOX = YES; ENABLE_HARDENED_RUNTIME = YES; INFOPLIST_FILE = Config/RouterQuota/WidgetInfo.plist; MACOSX_DEPLOYMENT_TARGET = 14.0; MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = com.routerquota.app.widget; PRODUCT_NAME = RouterQuotaWidget; SKIP_INSTALL = YES; SWIFT_VERSION = 6.0; }; name = Debug; };
+		A90000000000000000000004 /* Widget Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; APPLICATION_EXTENSION_API_ONLY = YES; ARCHS = "arm64 x86_64"; CODE_SIGN_ENTITLEMENTS = Config/RouterQuota/RouterQuotaWidget.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_APP_SANDBOX = YES; ENABLE_HARDENED_RUNTIME = YES; INFOPLIST_FILE = Config/RouterQuota/WidgetInfo.plist; MACOSX_DEPLOYMENT_TARGET = 14.0; MARKETING_VERSION = 1.0.0; ONLY_ACTIVE_ARCH = NO; PRODUCT_BUNDLE_IDENTIFIER = com.routerquota.app.widget; PRODUCT_NAME = RouterQuotaWidget; SKIP_INSTALL = YES; SWIFT_VERSION = 6.0; }; name = Release; };
+		A90000000000000000000005 /* Project Debug */ = {isa = XCBuildConfiguration; buildSettings = {MACOSX_DEPLOYMENT_TARGET = 14.0; SWIFT_VERSION = 6.0; }; name = Debug; };
+		A90000000000000000000006 /* Project Release */ = {isa = XCBuildConfiguration; buildSettings = {MACOSX_DEPLOYMENT_TARGET = 14.0; SWIFT_VERSION = 6.0; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A60000000000000000000001 = {isa = XCConfigurationList; buildConfigurations = (A90000000000000000000001, A90000000000000000000002, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A60000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (A90000000000000000000003, A90000000000000000000004, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A60000000000000000000003 = {isa = XCConfigurationList; buildConfigurations = (A90000000000000000000005, A90000000000000000000006, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = A80000000000000000000001;
+}

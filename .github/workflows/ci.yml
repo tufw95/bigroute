@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Run Swift tests
+        run: swift test
+
+      - name: Build Debug app and widget
+        run: |
+          xcodebuild \
+            -project RouterQuota.xcodeproj \
+            -scheme RouterQuota \
+            -configuration Debug \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/RouterQuotaDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Validate release scripts
+        run: bash -n script/build_and_run.sh scripts/*.sh
+
+      - name: Reject tracked artifacts and secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden_pattern='(^|/)(\.DS_Store|\.env)$|\.(dmg|p8|p12|pem|key|cer|mobileprovision|provisionprofile|xcarchive)$'
+          if git ls-files | grep -E "$forbidden_pattern"; then
+            echo "Generated release artifacts or secrets must not be tracked." >&2
+            exit 1
+          fi

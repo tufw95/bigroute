@@ -1,0 +1,220 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 60
+    environment: release
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      MACOS_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_BASE64 }}
+      MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+      MACOS_APP_PROVISIONING_PROFILE_BASE64: ${{ secrets.MACOS_APP_PROVISIONING_PROFILE_BASE64 }}
+      MACOS_WIDGET_PROVISIONING_PROFILE_BASE64: ${{ secrets.MACOS_WIDGET_PROVISIONING_PROFILE_BASE64 }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      SPARKLE_EDDSA_PRIVATE_KEY_BASE64: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY_BASE64 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and validate release
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Release tags must be stable semantic versions such as v1.0.0." >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin main
+          release_commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          main_commit="$(git rev-parse "origin/main^{commit}")"
+          if [[ "$release_commit" != "$main_commit" ]]; then
+            echo "The release tag must point to the current origin/main HEAD." >&2
+            exit 1
+          fi
+
+          if ! grep -Eq "^## \\[$version\\]( |$)" CHANGELOG.md; then
+            echo "CHANGELOG.md is missing a section for $version." >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Require production signing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          required=(
+            MACOS_DEVELOPER_ID_CERTIFICATE_BASE64
+            MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD
+            MACOS_APP_PROVISIONING_PROFILE_BASE64
+            MACOS_WIDGET_PROVISIONING_PROFILE_BASE64
+            APPLE_ID
+            APPLE_TEAM_ID
+            APPLE_APP_PASSWORD
+            SPARKLE_EDDSA_PRIVATE_KEY_BASE64
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Stable releases require Developer ID signing, notarization, and Sparkle signing. Missing secrets:\n' >&2
+            printf '  - %s\n' "${missing[@]}" >&2
+            echo "No ad-hoc or non-notarized release will be published." >&2
+            exit 1
+          fi
+
+      - name: Run tests
+        run: swift test
+
+      - name: Prepare ephemeral signing material
+        id: signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          certificate_path="$RUNNER_TEMP/developer-id.p12"
+          app_profile_path="$RUNNER_TEMP/RouterQuota.provisionprofile"
+          widget_profile_path="$RUNNER_TEMP/RouterQuotaWidget.provisionprofile"
+          sparkle_key_path="$RUNNER_TEMP/sparkle-ed25519-private-key"
+          keychain_path="$RUNNER_TEMP/router-quota-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 32)"
+
+          printf '%s' "$MACOS_DEVELOPER_ID_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
+          printf '%s' "$MACOS_APP_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$app_profile_path"
+          printf '%s' "$MACOS_WIDGET_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$widget_profile_path"
+          printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY_BASE64" | base64 --decode > "$sparkle_key_path"
+          chmod 600 "$certificate_path" "$app_profile_path" "$widget_profile_path" "$sparkle_key_path"
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s -k "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          identity="$(security find-identity -v -p codesigning "$keychain_path" \
+            | awk -F '"' '/Developer ID Application/ { print $2; exit }')"
+          if [[ -z "$identity" ]]; then
+            echo "The certificate secret does not contain a usable Developer ID Application identity." >&2
+            exit 1
+          fi
+
+          {
+            echo "SIGN_IDENTITY=$identity"
+            echo "SIGNING_KEYCHAIN_PATH=$keychain_path"
+            echo "APP_PROVISIONING_PROFILE_PATH=$app_profile_path"
+            echo "WIDGET_PROVISIONING_PROFILE_PATH=$widget_profile_path"
+            echo "SPARKLE_PRIVATE_KEY_PATH=$sparkle_key_path"
+          } >> "$GITHUB_ENV"
+
+      - name: Build signed universal artifacts
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: ./scripts/build_release.sh
+
+      - name: Notarize and staple artifacts
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: ./scripts/notarize_release.sh
+
+      - name: Generate Sparkle appcast
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: ./scripts/generate_appcast.sh
+
+      - name: Validate release artifacts
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/Router Quota.app"
+          dmg="dist/Router-Quota-$VERSION.dmg"
+          zip="dist/Router-Quota-$VERSION.zip"
+          appcast="dist/appcast.xml"
+
+          test -s "$dmg"
+          test -s "$zip"
+          test -s "$appcast"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          xcrun stapler validate "$app"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type execute --verbose=2 "$app"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+          lipo "$app/Contents/MacOS/RouterQuota" -verify_arch arm64 x86_64
+          lipo "$app/Contents/PlugIns/RouterQuotaWidget.appex/Contents/MacOS/RouterQuotaWidget" \
+            -verify_arch arm64 x86_64
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "com.routerquota.app"
+          grep -Eq '<enclosure[^>]+sparkle:edSignature=' "$appcast"
+          grep -q 'sparkle-signatures:' "$appcast"
+          grep -q "Router-Quota-$VERSION.zip" "$appcast"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to replace published assets." >&2
+            exit 1
+          fi
+
+          notes_path="$RUNNER_TEMP/release-notes.md"
+          awk -v heading="## [$VERSION]" '
+            index($0, heading) == 1 { capture=1; next }
+            capture && /^## \[/ { exit }
+            capture && /^\[[^]]+\]: / { exit }
+            capture { print }
+          ' CHANGELOG.md > "$notes_path"
+
+          gh release create "$TAG" \
+            --verify-tag \
+            --target "$GITHUB_SHA" \
+            --title "Router Quota $VERSION" \
+            --notes-file "$notes_path" \
+            "dist/Router-Quota-$VERSION.dmg" \
+            "dist/Router-Quota-$VERSION.zip" \
+            "dist/appcast.xml"
+
+      - name: Cleanup signing material
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${SIGNING_KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "$SIGNING_KEYCHAIN_PATH" >/dev/null 2>&1 || true
+          fi

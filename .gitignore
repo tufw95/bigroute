@@ -1,0 +1,29 @@
+.DS_Store
+.codex/
+.build/
+.swiftpm/
+backups/
+dist/
+*.xcresult
+*.dSYM
+*.log
+*.xcarchive
+xcuserdata/
+*.xcuserstate
+
+# Local editor and SwiftPM backup artifacts.
+*.swp
+*.swo
+*~
+*.orig
+*.rej
+
+# Local secrets and generated user config should never be committed.
+.env
+*.p8
+*.p12
+*.pem
+*.key
+*.cer
+*.mobileprovision
+*.provisionprofile
