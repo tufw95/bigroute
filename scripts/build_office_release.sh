@@ -75,9 +75,10 @@ done
 
 # A persistent self-signed identity keeps Keychain ACLs stable across office
 # updates without claiming Apple Developer ID trust or notarization.
-codesign_args=(--force --sign "$OFFICE_SIGN_IDENTITY" --timestamp=none)
+codesign_args=(--force --verbose=2 --sign "$OFFICE_SIGN_IDENTITY" --timestamp=none)
 if [[ -n "$OFFICE_SIGNING_KEYCHAIN_PATH" ]]; then
   codesign_args+=(--keychain "$OFFICE_SIGNING_KEYCHAIN_PATH")
+  security find-identity -v -p codesigning "$OFFICE_SIGNING_KEYCHAIN_PATH"
 fi
 sparkle_version="$SPARKLE/Versions/B"
 sparkle_nested=(
@@ -87,6 +88,7 @@ sparkle_nested=(
   "$sparkle_version/Updater.app"
 )
 for nested_code in "${sparkle_nested[@]}"; do
+  echo "Signing $nested_code"
   codesign "${codesign_args[@]}" \
     --preserve-metadata=identifier,entitlements,requirements \
     "$nested_code"

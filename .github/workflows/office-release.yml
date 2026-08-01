@@ -235,9 +235,8 @@ jobs:
         if: always()
         shell: bash
         run: |
-          if [[ -n "${OFFICE_CERTIFICATE_PATH:-}" ]]; then
-            sudo security remove-trusted-cert -d "$OFFICE_CERTIFICATE_PATH" >/dev/null 2>&1 || true
-          fi
+          # The hosted runner is destroyed after the job, so removing its
+          # temporary system trust entry is unnecessary and can block headless cleanup.
           if [[ -n "${OFFICE_SIGNING_KEYCHAIN_PATH:-}" ]]; then
             security delete-keychain "$OFFICE_SIGNING_KEYCHAIN_PATH" >/dev/null 2>&1 || true
           fi
