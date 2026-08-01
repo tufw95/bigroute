@@ -15,8 +15,8 @@ ZIP_NAME="Router-Quota-$VERSION.zip"
 ZIP_PATH="$DIST_DIR/$ZIP_NAME"
 APPCAST_PATH="$DIST_DIR/appcast.xml"
 
-if [[ "$TAG" != "v$VERSION" ]]; then
-  echo "TAG '$TAG' does not match VERSION '$VERSION'." >&2
+if [[ "$TAG" != "v$VERSION" && "$TAG" != "office-v$VERSION" ]]; then
+  echo "TAG '$TAG' does not match VERSION '$VERSION'. Expected v$VERSION or office-v$VERSION." >&2
   exit 1
 fi
 if [[ ! "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
@@ -24,7 +24,7 @@ if [[ ! "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
   exit 1
 fi
 if [[ ! -s "$ZIP_PATH" || ! -s "$SPARKLE_PRIVATE_KEY_PATH" ]]; then
-  echo "The notarized update ZIP and Sparkle EdDSA private key are required." >&2
+  echo "The update ZIP and Sparkle EdDSA private key are required." >&2
   exit 1
 fi
 
@@ -42,6 +42,7 @@ tar -xJf "$sparkle_archive" -C "$tools_dir"
 
 cp "$ZIP_PATH" "$archives_dir/$ZIP_NAME"
 notes_path="$archives_dir/Router-Quota-$VERSION.md"
+generation_log="$tools_dir/generate-appcast.log"
 awk -v heading="## [$VERSION]" '
   index($0, heading) == 1 { capture=1; next }
   capture && /^## \[/ { exit }
@@ -49,7 +50,7 @@ awk -v heading="## [$VERSION]" '
   capture { print }
 ' "$ROOT_DIR/CHANGELOG.md" > "$notes_path"
 
-"$tools_dir/bin/generate_appcast" \
+if ! "$tools_dir/bin/generate_appcast" \
   --ed-key-file "$SPARKLE_PRIVATE_KEY_PATH" \
   --download-url-prefix "https://github.com/$REPOSITORY/releases/download/$TAG/" \
   --full-release-notes-url "https://github.com/$REPOSITORY/releases/tag/$TAG" \
@@ -58,7 +59,15 @@ awk -v heading="## [$VERSION]" '
   --maximum-versions 1 \
   --maximum-deltas 0 \
   -o "$APPCAST_PATH" \
-  "$archives_dir"
+  "$archives_dir" 2>&1 | tee "$generation_log"; then
+  echo "Sparkle failed to generate the appcast." >&2
+  exit 1
+fi
+
+if grep -Fq 'does not match key EdDSA' "$generation_log"; then
+  echo "The Sparkle private key does not match SUPublicEDKey in the built app." >&2
+  exit 1
+fi
 
 if ! grep -Eq '<enclosure[^>]+sparkle:edSignature=' "$APPCAST_PATH"; then
   echo "Generated appcast does not contain a signed update enclosure. Verify that the private key matches SUPublicEDKey." >&2
@@ -72,5 +81,10 @@ if ! grep -q "$ZIP_NAME" "$APPCAST_PATH"; then
   echo "Generated appcast does not reference $ZIP_NAME." >&2
   exit 1
 fi
+
+SPARKLE_SIGN_UPDATE_PATH="$tools_dir/bin/sign_update" \
+  SPARKLE_PRIVATE_KEY_PATH="$SPARKLE_PRIVATE_KEY_PATH" \
+  ZIP_PATH="$ZIP_PATH" \
+  "$ROOT_DIR/scripts/verify_appcast.sh"
 
 echo "$APPCAST_PATH"

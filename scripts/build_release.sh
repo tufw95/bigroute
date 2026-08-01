@@ -131,6 +131,9 @@ for info_plist in "$APP_INFO" "$WIDGET_INFO"; do
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$info_plist"
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$info_plist"
 done
+/usr/libexec/PlistBuddy \
+  -c 'Set :SUFeedURL https://github.com/tufw95/router-quota/releases/download/stable-channel/appcast.xml' \
+  "$APP_INFO"
 
 cp "$APP_PROFILE" "$DIST_APP/Contents/embedded.provisionprofile"
 cp "$WIDGET_PROFILE" "$WIDGET/Contents/embedded.provisionprofile"
@@ -202,10 +205,10 @@ codesign --force --options runtime --timestamp \
   "$DIST_APP"
 
 codesign --verify --deep --strict --verbose=2 "$DIST_APP"
-lipo -verify_arch arm64 "$DIST_APP/Contents/MacOS/RouterQuota"
-lipo -verify_arch x86_64 "$DIST_APP/Contents/MacOS/RouterQuota"
-lipo -verify_arch arm64 "$WIDGET/Contents/MacOS/RouterQuotaWidget"
-lipo -verify_arch x86_64 "$WIDGET/Contents/MacOS/RouterQuotaWidget"
+lipo "$DIST_APP/Contents/MacOS/RouterQuota" -verify_arch arm64
+lipo "$DIST_APP/Contents/MacOS/RouterQuota" -verify_arch x86_64
+lipo "$WIDGET/Contents/MacOS/RouterQuotaWidget" -verify_arch arm64
+lipo "$WIDGET/Contents/MacOS/RouterQuotaWidget" -verify_arch x86_64
 
 validate_signed_entitlements() {
   local bundle="$1"

@@ -58,8 +58,17 @@ jobs:
             exit 1
           fi
 
+          IFS=. read -r major minor patch <<< "$version"
+          if (( 10#$minor > 999 || 10#$patch > 999 )); then
+            echo "Minor and patch versions must be 999 or lower for CFBundleVersion mapping." >&2
+            exit 1
+          fi
+          build_number=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
+          if (( build_number < 1 )); then build_number=1; fi
+
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
 
       - name: Require production signing secrets
         shell: bash
@@ -138,7 +147,7 @@ jobs:
       - name: Build signed universal artifacts
         env:
           VERSION: ${{ steps.release.outputs.version }}
-          BUILD_NUMBER: ${{ github.run_number }}
+          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
         run: ./scripts/build_release.sh
 
       - name: Notarize and staple artifacts
@@ -172,13 +181,15 @@ jobs:
           xcrun stapler validate "$dmg"
           spctl --assess --type execute --verbose=2 "$app"
           spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
-          lipo -verify_arch arm64 "$app/Contents/MacOS/RouterQuota"
-          lipo -verify_arch x86_64 "$app/Contents/MacOS/RouterQuota"
+          lipo "$app/Contents/MacOS/RouterQuota" -verify_arch arm64
+          lipo "$app/Contents/MacOS/RouterQuota" -verify_arch x86_64
           widget="$app/Contents/PlugIns/RouterQuotaWidget.appex/Contents/MacOS/RouterQuotaWidget"
-          lipo -verify_arch arm64 "$widget"
-          lipo -verify_arch x86_64 "$widget"
+          lipo "$widget" -verify_arch arm64
+          lipo "$widget" -verify_arch x86_64
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "com.routerquota.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app/Contents/Info.plist")" \
+            = "https://github.com/${{ github.repository }}/releases/download/stable-channel/appcast.xml"
           grep -Eq '<enclosure[^>]+sparkle:edSignature=' "$appcast"
           grep -q 'sparkle-signatures:' "$appcast"
           grep -q "Router-Quota-$VERSION.zip" "$appcast"
@@ -212,6 +223,22 @@ jobs:
             "dist/Router-Quota-$VERSION.dmg" \
             "dist/Router-Quota-$VERSION.zip" \
             "dist/appcast.xml"
+
+      - name: Update stable channel feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel_tag="stable-channel"
+          if ! gh release view "$channel_tag" >/dev/null 2>&1; then
+            gh release create "$channel_tag" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "Router Quota Stable Update Channel" \
+              --notes "Signed Sparkle feed for Developer ID builds. Download installers from the latest stable release."
+          fi
+          gh release upload "$channel_tag" dist/appcast.xml --clobber
 
       - name: Cleanup signing material
         if: always()

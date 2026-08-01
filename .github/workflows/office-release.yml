@@ -1,0 +1,245 @@
+name: Office Release
+
+on:
+  push:
+    tags:
+      - "office-v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: office-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 45
+    environment: office-release
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      OFFICE_SIGNING_CERT_SHA1: AED61665255B3E8DBD914C8C65A401B7B8902FD8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and validate office release
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#office-v}"
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Office release tags must look like office-v1.0.0." >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin main
+          release_commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          main_commit="$(git rev-parse "origin/main^{commit}")"
+          if [[ "$release_commit" != "$main_commit" ]]; then
+            echo "The office release tag must point to the current origin/main HEAD." >&2
+            exit 1
+          fi
+          if ! grep -Eq "^## \[$version\]( |$)" CHANGELOG.md; then
+            echo "CHANGELOG.md is missing a section for $version." >&2
+            exit 1
+          fi
+          IFS=. read -r major minor patch <<< "$version"
+          if (( 10#$minor > 999 || 10#$patch > 999 )); then
+            echo "Minor and patch versions must be 999 or lower for CFBundleVersion mapping." >&2
+            exit 1
+          fi
+          build_number=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
+          if (( build_number < 1 )); then build_number=1; fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        run: swift test
+
+      - name: Restore office signing material
+        env:
+          OFFICE_SIGNING_CERTIFICATE_BASE64: ${{ secrets.OFFICE_SIGNING_CERTIFICATE_BASE64 }}
+          OFFICE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.OFFICE_SIGNING_CERTIFICATE_PASSWORD }}
+          SPARKLE_EDDSA_PRIVATE_KEY_BASE64: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            OFFICE_SIGNING_CERTIFICATE_BASE64 \
+            OFFICE_SIGNING_CERTIFICATE_PASSWORD \
+            SPARKLE_EDDSA_PRIVATE_KEY_BASE64; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "$name is required." >&2
+              exit 1
+            fi
+          done
+
+          certificate_path="$RUNNER_TEMP/router-quota-office-signing.p12"
+          certificate_pem_path="$RUNNER_TEMP/router-quota-office-signing.pem"
+          sparkle_key_path="$RUNNER_TEMP/sparkle-ed25519-private-key"
+          keychain_path="$RUNNER_TEMP/router-quota-office-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 32)"
+
+          printf '%s' "$OFFICE_SIGNING_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
+          printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY_BASE64" | base64 --decode > "$sparkle_key_path"
+          chmod 600 "$certificate_path" "$sparkle_key_path"
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$OFFICE_SIGNING_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -k "$keychain_path" >/dev/null
+          security find-certificate \
+            -c "Router Quota Office Signing" \
+            -p "$keychain_path" > "$certificate_pem_path"
+
+          actual_fingerprint="$(openssl x509 -in "$certificate_pem_path" -noout -fingerprint -sha1 \
+            | cut -d= -f2 | tr -d ':')"
+          if [[ "$actual_fingerprint" != "$OFFICE_SIGNING_CERT_SHA1" ]]; then
+            echo "The office signing certificate fingerprint does not match the pinned identity." >&2
+            exit 1
+          fi
+
+          security add-trusted-cert -p codeSign -r trustRoot \
+            -k "$keychain_path" \
+            "$certificate_pem_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$keychain_password" \
+            "$keychain_path" >/dev/null
+
+          identity="$(security find-identity -v -p codesigning "$keychain_path" \
+            | awk -F '"' '/Router Quota Office Signing/ { print $2; exit }')"
+          if [[ "$identity" != "Router Quota Office Signing" ]]; then
+            echo "The certificate secret does not contain the expected office signing identity." >&2
+            exit 1
+          fi
+
+          {
+            echo "OFFICE_SIGN_IDENTITY=$identity"
+            echo "OFFICE_SIGNING_KEYCHAIN_PATH=$keychain_path"
+            echo "OFFICE_CERTIFICATE_PATH=$certificate_pem_path"
+            echo "OFFICE_P12_PATH=$certificate_path"
+            echo "SPARKLE_PRIVATE_KEY_PATH=$sparkle_key_path"
+          } >> "$GITHUB_ENV"
+
+      - name: Build universal office artifacts
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+        run: ./scripts/build_office_release.sh
+
+      - name: Generate signed Sparkle appcast
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: ./scripts/generate_appcast.sh
+
+      - name: Validate office artifacts
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/Router Quota.app"
+          widget="$app/Contents/PlugIns/RouterQuotaWidget.appex"
+          dmg="dist/Router-Quota-$VERSION.dmg"
+          zip="dist/Router-Quota-$VERSION.zip"
+          appcast="dist/appcast.xml"
+
+          test -s "$dmg"
+          test -s "$zip"
+          test -s "$appcast"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          lipo "$app/Contents/MacOS/RouterQuota" -verify_arch arm64
+          lipo "$app/Contents/MacOS/RouterQuota" -verify_arch x86_64
+          lipo "$widget/Contents/MacOS/RouterQuotaWidget" -verify_arch arm64
+          lipo "$widget/Contents/MacOS/RouterQuotaWidget" -verify_arch x86_64
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "com.routerquota.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app/Contents/Info.plist")" \
+            = "https://github.com/${{ github.repository }}/releases/download/office-channel/appcast.xml"
+          grep -Eq '<enclosure[^>]+sparkle:edSignature=' "$appcast"
+          grep -q 'sparkle-signatures:' "$appcast"
+          grep -q "Router-Quota-$VERSION.zip" "$appcast"
+
+          requirement="$(codesign -d -r- "$app" 2>&1 | sed -n 's/^designated => //p')"
+          expected="$(printf '%s' "$OFFICE_SIGNING_CERT_SHA1" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$requirement" != *"certificate root = H\"$expected\""* ]]; then
+            echo "Office artifacts are not signed by the pinned office identity." >&2
+            exit 1
+          fi
+
+      - name: Publish office OTA release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to replace published assets." >&2
+            exit 1
+          fi
+
+          notes_path="$RUNNER_TEMP/office-release-notes.md"
+          cat > "$notes_path" <<'NOTES'
+          ## Office OTA channel
+
+          This build is distributed for internal office use and is authenticated by a Sparkle Ed25519 signature.
+
+          It uses a persistent internal code-signing certificate and is not Apple notarized. The first installation may require **Privacy & Security > Open Anyway**. Once installed, later office releases update automatically through Router Quota.
+          NOTES
+
+          gh release create "$TAG" \
+            --verify-tag \
+            --target "$GITHUB_SHA" \
+            --title "Router Quota $VERSION Office" \
+            --notes-file "$notes_path" \
+            "dist/Router-Quota-$VERSION.dmg" \
+            "dist/Router-Quota-$VERSION.zip" \
+            "dist/appcast.xml"
+
+      - name: Update office channel feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel_tag="office-channel"
+          if ! gh release view "$channel_tag" >/dev/null 2>&1; then
+            gh release create "$channel_tag" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "Router Quota Office Update Channel" \
+              --notes "Signed Sparkle feed for installed office builds. Download installers from the latest numbered office release."
+          fi
+          gh release upload "$channel_tag" dist/appcast.xml --clobber
+
+      - name: Cleanup signing material
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${OFFICE_CERTIFICATE_PATH:-}" ]]; then
+            security remove-trusted-cert "$OFFICE_CERTIFICATE_PATH" >/dev/null 2>&1 || true
+          fi
+          if [[ -n "${OFFICE_SIGNING_KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "$OFFICE_SIGNING_KEYCHAIN_PATH" >/dev/null 2>&1 || true
+          fi
+          for path in "${OFFICE_P12_PATH:-}" "${OFFICE_CERTIFICATE_PATH:-}" "${SPARKLE_PRIVATE_KEY_PATH:-}"; do
+            if [[ -n "$path" && -e "$path" ]]; then
+              unlink "$path"
+            fi
+          done

@@ -19,3 +19,5 @@ Include the affected version, macOS version, reproduction steps, expected impact
 ## Credential Safety
 
 Router Quota stores provider API keys in macOS Keychain. Widget snapshots contain quota display data but never API keys. Release signing certificates, provisioning profiles, notarization passwords, and the Sparkle EdDSA private key must remain in protected GitHub Actions secrets and must never be committed.
+
+Office releases use a pinned, persistent self-signed code-signing certificate and are not Apple notarized. Their update ZIP and dedicated office appcast are authenticated with the embedded Sparkle Ed25519 public key. Users must download the first installer only from this repository and verify that subsequent updates are presented by Router Quota itself.

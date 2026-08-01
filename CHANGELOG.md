@@ -17,6 +17,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Six persisted account sort modes shared by the menu bar app and WidgetKit.
 - Developer ID signed, notarized universal release pipeline.
 - Sparkle 2 automatic updates delivered through GitHub Releases.
+- Internal office OTA releases that require no paid Apple Developer membership.
+- Persistent internal code signing to keep Keychain access stable across office updates.
+- Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/router-quota/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/tufw95/router-quota/releases/tag/v1.0.0
+[Unreleased]: https://github.com/tufw95/router-quota/compare/office-v1.0.0...HEAD
+[1.0.0]: https://github.com/tufw95/router-quota/releases/tag/office-v1.0.0

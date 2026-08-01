@@ -1,6 +1,7 @@
 # Router Quota
 
 [![CI](https://github.com/tufw95/router-quota/actions/workflows/ci.yml/badge.svg)](https://github.com/tufw95/router-quota/actions/workflows/ci.yml)
+[![Office Release](https://github.com/tufw95/router-quota/actions/workflows/office-release.yml/badge.svg)](https://github.com/tufw95/router-quota/actions/workflows/office-release.yml)
 
 Router Quota is a native macOS menu bar app and WidgetKit extension for monitoring account quota from user-configured router providers.
 
@@ -21,23 +22,23 @@ Router Quota is a native macOS menu bar app and WidgetKit extension for monitori
 
 Router Quota requires macOS 14 or later on Apple Silicon or Intel Macs.
 
-The current [0.9.0 Preview 1](https://github.com/tufw95/router-quota/releases/tag/preview-0.9.0-1) is available for internal team testing:
+The latest office release is available from [GitHub Releases](https://github.com/tufw95/router-quota/releases/latest):
 
-1. Download `Router-Quota-0.9.0-preview.1.dmg`.
+1. Download `Router-Quota-<version>.dmg`.
 2. Open the DMG and drag **Router Quota** to **Applications**.
-3. On first launch, macOS may require **Right-click > Open** or **System Settings > Privacy & Security > Open Anyway** because the preview is ad-hoc signed.
+3. On first launch, if macOS blocks the app, open **System Settings > Privacy & Security** and choose **Open Anyway**.
 4. Open Router Quota once, then add providers from **Settings**.
 
-The preview is universal but is not notarized. Widget discovery can vary until both targets are signed and provisioned by the same Apple Developer team. Sparkle OTA is configured in the app, but the first stable update feed will be published only after production signing credentials are available.
+Office builds are universal, signed with a persistent internal certificate, and authenticated by a Sparkle Ed25519 signature, but they are not Apple notarized. A fresh office installation keeps the same signing identity across later OTA releases, preserving Keychain access. Machines upgrading from the older ad-hoc preview may receive one final Keychain approval prompt. Widget discovery can still vary because Apple reserves fully provisioned App Groups for paid Developer teams.
 
-For a stable release:
+An optional public-trust release can also be produced with a paid Apple Developer membership:
 
 1. Open the [latest GitHub release](https://github.com/tufw95/router-quota/releases/latest).
 2. Download `Router-Quota-<version>.dmg`.
 3. Open the DMG and drag **Router Quota** to **Applications**.
 4. Open Router Quota once, then add providers from **Settings**.
 
-Official release artifacts are universal, Developer ID signed, notarized by Apple, and validated by Gatekeeper. The release workflow refuses to publish an ad-hoc or non-notarized stable build.
+Public-trust artifacts are Developer ID signed, notarized by Apple, and validated by Gatekeeper. This stronger channel is separate from the internal office OTA channel.
 
 ## Configure Providers
 
@@ -70,10 +71,10 @@ The menu bar app refreshes each provider at the interval selected in Settings, w
 
 The widget requests a new timeline every 5 minutes. macOS owns WidgetKit scheduling and may delay or combine refreshes to protect battery life. The widget header reports the age of the last successful provider result, for example `Updated 8 min ago`; it does not represent the quota reset time.
 
-Sparkle checks for app updates automatically on its configured schedule and also supports **Check for Updates…** from the app. Release updates are read from:
+Sparkle checks for app updates hourly and also supports **Check for Updates…** from the app. Office updates are read from the dedicated signed channel:
 
 ```text
-https://github.com/tufw95/router-quota/releases/latest/download/appcast.xml
+https://github.com/tufw95/router-quota/releases/download/office-channel/appcast.xml
 ```
 
 ## Build from Source
@@ -98,9 +99,28 @@ Build and launch a local Debug copy:
 
 Unsigned or ad-hoc local builds are suitable for development, but WidgetKit discovery and the shared App Group work most reliably when both targets use the same Apple Development team.
 
-## Release Process
+## Office OTA Release
 
-The `Release` workflow runs only for stable semantic-version tags such as `v1.0.0`. It tests the project, builds a universal app, signs the app and widget with Developer ID, notarizes and staples the app and DMG, creates a Sparkle 2.9.4 appcast, validates every artifact, and then publishes:
+The `Office Release` workflow requires the persistent office certificate and Sparkle Ed25519 key configured in GitHub Actions. It builds a universal internally signed app, verifies the appcast and ZIP signatures against the public key embedded in the app, publishes the numbered release, and atomically updates the fixed `office-channel` feed.
+
+Required repository secrets:
+
+- `OFFICE_SIGNING_CERTIFICATE_BASE64`: password-protected PKCS#12 containing the persistent `Router Quota Office Signing` identity.
+- `OFFICE_SIGNING_CERTIFICATE_PASSWORD`: password for that PKCS#12 file.
+- `SPARKLE_EDDSA_PRIVATE_KEY_BASE64`: private key matching the `SUPublicEDKey` embedded in the app.
+
+Create an office release after CI passes on `main`:
+
+```bash
+git tag office-v1.0.0
+git push origin office-v1.0.0
+```
+
+Existing office installations check the dedicated channel hourly and can also use **Check for Updates…** immediately. The first `1.0.0` release also carries a migration feed for the older preview, whose feed URL used GitHub's global latest release.
+
+## Developer ID Release
+
+The optional `Release` workflow runs only for stable semantic-version tags such as `v1.0.0`. It requires a paid Apple Developer membership, signs and notarizes the app, and publishes to a separate fixed `stable-channel` feed. Office installations never read this feed.
 
 - `Router-Quota-<version>.dmg`
 - `Router-Quota-<version>.zip`
@@ -130,7 +150,7 @@ base64 -i sparkle_private_key | pbcopy
 
 The bundle IDs and App Group must be registered in the same Apple Developer team. Keep the Sparkle private key, certificate, profiles, and notarization credentials out of the repository.
 
-Create and push a release tag only after CI passes on `main`:
+Create and push a Developer ID release tag only after CI passes on `main`:
 
 ```bash
 git tag -s v1.0.0 -m "Router Quota 1.0.0"

@@ -21,7 +21,7 @@
 <key>SUAllowsAutomaticUpdates</key><true/>
 <key>SUAutomaticallyUpdate</key><true/>
 <key>SUEnableAutomaticChecks</key><true/>
-<key>SUFeedURL</key><string>https://github.com/tufw95/router-quota/releases/latest/download/appcast.xml</string>
+<key>SUFeedURL</key><string>https://github.com/tufw95/router-quota/releases/download/office-channel/appcast.xml</string>
 <key>SUPublicEDKey</key><string>M3PQhg/ygRWtEttOkX73X9GXG4LXfCwMDNr/aUoxUMQ=</string>
 <key>SURequireSignedFeed</key><true/>
 <key>SUScheduledCheckInterval</key><integer>3600</integer>
