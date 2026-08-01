@@ -15,7 +15,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Keychain-backed API credentials and sanitized widget snapshots.
 - Provider-defined account names with safe fallback to legacy email labels.
 - Six persisted account sort modes shared by the menu bar app and WidgetKit.
-- Developer ID signed, notarized universal release pipeline.
+- Optional future Developer ID signing and notarization workflow for a public-trust channel.
 - Sparkle 2 automatic updates delivered through GitHub Releases.
 - Internal office OTA releases that require no paid Apple Developer membership.
 - Persistent internal code signing to keep Keychain access stable across office updates.

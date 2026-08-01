@@ -142,7 +142,7 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         case accountNameSnake = "account_name"
         case displayNameSnake = "display_name"
         case userNameSnake = "user_name"
-        case account, user, metadata
+        case account, user, metadata, connection
         case plan, limitReached, quotas, resetCredits, status, errorCode
     }
 
@@ -201,7 +201,9 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         ]
         if let value = direct.compactMap(Self.nonEmpty).first { return value }
 
-        for key in [CodingKeys.account, .user, .metadata] {
+        // Some router deployments keep the user-editable account name beside
+        // the quota payload instead of flattening it onto the account object.
+        for key in [CodingKeys.connection, .account, .user, .metadata] {
             guard let nested = try? container.nestedContainer(keyedBy: IdentityKeys.self, forKey: key) else { continue }
             let values: [String?] = [
                 (try? nested.decodeIfPresent(String.self, forKey: .name)) ?? nil,

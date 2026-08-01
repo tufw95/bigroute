@@ -38,6 +38,12 @@ import Testing
     #expect(legacy.label == "legacy@example.com")
 }
 
+@Test func accountIdentityUsesNestedConnectionNameBeforeEmailLabel() throws {
+    let json = Data(#"{"id":"nine-4","provider":"codex","label":"person@example.com","connection":{"name":"Design Mac"},"plan":"plus","limitReached":false,"quotas":[],"resetCredits":{"availableCount":0},"status":"available"}"#.utf8)
+    let account = try JSONDecoder().decode(CodexQuotaAccount.self, from: json)
+    #expect(account.label == "Design Mac")
+}
+
 @Test func accountDecoderRejectsIncompleteQuotaRecords() {
     let incomplete = Data(#"{"id":"nine-4","name":"Incomplete"}"#.utf8)
     #expect(throws: DecodingError.self) {
