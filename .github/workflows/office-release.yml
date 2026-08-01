@@ -97,7 +97,9 @@ jobs:
           security unlock-keychain -p "$keychain_password" "$keychain_path"
           security import "$certificate_path" \
             -P "$OFFICE_SIGNING_CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign \
+            -A \
+            -t cert \
+            -f pkcs12 \
             -k "$keychain_path" >/dev/null
           security find-certificate \
             -c "Router Quota Office Signing" \
@@ -122,6 +124,25 @@ jobs:
             [[ -n "$existing_keychain" ]] && existing_keychains+=("$existing_keychain")
           done < <(security list-keychains -d user)
           security list-keychains -d user -s "$keychain_path" "${existing_keychains[@]}"
+
+          identity_output="$(security find-identity -p codesigning "$keychain_path")"
+          printf '%s\n' "$identity_output"
+          if [[ "$identity_output" != *"$actual_fingerprint"* ]]; then
+            echo "The pinned office signing identity is unavailable in the temporary keychain." >&2
+            exit 1
+          fi
+
+          preflight_binary="$RUNNER_TEMP/router-quota-codesign-preflight"
+          cp /usr/bin/true "$preflight_binary"
+          codesign \
+            --force \
+            --verbose=2 \
+            --sign "$actual_fingerprint" \
+            --timestamp=none \
+            --keychain "$keychain_path" \
+            "$preflight_binary"
+          codesign --verify --strict --verbose=2 "$preflight_binary"
+          unlink "$preflight_binary"
 
           {
             echo "OFFICE_SIGN_IDENTITY=$actual_fingerprint"

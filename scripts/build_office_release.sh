@@ -78,7 +78,7 @@ done
 codesign_args=(--force --verbose=2 --sign "$OFFICE_SIGN_IDENTITY" --timestamp=none)
 if [[ -n "$OFFICE_SIGNING_KEYCHAIN_PATH" ]]; then
   codesign_args+=(--keychain "$OFFICE_SIGNING_KEYCHAIN_PATH")
-  security find-identity -v -p codesigning "$OFFICE_SIGNING_KEYCHAIN_PATH"
+  security find-identity -p codesigning "$OFFICE_SIGNING_KEYCHAIN_PATH"
 fi
 sparkle_version="$SPARKLE/Versions/B"
 sparkle_nested=(

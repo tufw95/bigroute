@@ -22,7 +22,7 @@ Router Quota is a native macOS menu bar app and WidgetKit extension for monitori
 
 Router Quota requires macOS 14 or later on Apple Silicon or Intel Macs.
 
-The latest office release is available from [GitHub Releases](https://github.com/tufw95/router-quota/releases/latest):
+The current office build is available from [Router Quota 1.0.0 Office](https://github.com/tufw95/router-quota/releases/tag/office-v1.0.0):
 
 1. Download `Router-Quota-<version>.dmg`.
 2. Open the DMG and drag **Router Quota** to **Applications**.
@@ -116,7 +116,7 @@ git tag office-v1.0.0
 git push origin office-v1.0.0
 ```
 
-Existing office installations check the dedicated channel hourly and can also use **Check for Updates…** immediately. The first `1.0.0` release also carries a migration feed for the older preview, whose feed URL used GitHub's global latest release.
+Existing office installations check the dedicated channel hourly and can also use **Check for Updates…** immediately. Installations of the older ad-hoc preview should install `1.0.0` once from the DMG to move onto the dedicated office channel and persistent signing identity.
 
 ## Developer ID Release
 
