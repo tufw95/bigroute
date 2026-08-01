@@ -138,7 +138,7 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, provider, label, name, accountName, displayName, username, userName, email
+        case id, provider, label, name, nickname, accountName, displayName, username, userName, email
         case accountNameSnake = "account_name"
         case displayNameSnake = "display_name"
         case userNameSnake = "user_name"
@@ -147,7 +147,7 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
     }
 
     private enum IdentityKeys: String, CodingKey {
-        case label, name, accountName, displayName, username, userName, email
+        case label, name, nickname, accountName, displayName, username, userName, email
         case accountNameSnake = "account_name"
         case displayNameSnake = "display_name"
         case userNameSnake = "user_name"
@@ -191,6 +191,7 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
     private static func firstIdentity(in container: KeyedDecodingContainer<CodingKeys>) -> String? {
         let direct: [String?] = [
             (try? container.decodeIfPresent(String.self, forKey: .name)) ?? nil,
+            (try? container.decodeIfPresent(String.self, forKey: .nickname)) ?? nil,
             (try? container.decodeIfPresent(String.self, forKey: .accountName)) ?? nil,
             (try? container.decodeIfPresent(String.self, forKey: .accountNameSnake)) ?? nil,
             (try? container.decodeIfPresent(String.self, forKey: .displayName)) ?? nil,
@@ -207,6 +208,7 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
             guard let nested = try? container.nestedContainer(keyedBy: IdentityKeys.self, forKey: key) else { continue }
             let values: [String?] = [
                 (try? nested.decodeIfPresent(String.self, forKey: .name)) ?? nil,
+                (try? nested.decodeIfPresent(String.self, forKey: .nickname)) ?? nil,
                 (try? nested.decodeIfPresent(String.self, forKey: .accountName)) ?? nil,
                 (try? nested.decodeIfPresent(String.self, forKey: .accountNameSnake)) ?? nil,
                 (try? nested.decodeIfPresent(String.self, forKey: .displayName)) ?? nil,
