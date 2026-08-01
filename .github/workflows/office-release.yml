@@ -110,26 +110,21 @@ jobs:
             exit 1
           fi
 
-          # Hosted macOS runners require self-signed identities to be trusted
-          # in the system domain before codesign exposes their private keys.
-          sudo security add-trusted-cert \
-            -d -p codeSign -r trustRoot \
-            -k /Library/Keychains/System.keychain \
-            "$certificate_pem_path"
           security set-key-partition-list \
             -S apple-tool:,apple:,codesign: \
             -s -k "$keychain_password" \
             "$keychain_path" >/dev/null
 
-          identity="$(security find-identity -v -p codesigning "$keychain_path" \
-            | awk -F '"' '/Router Quota Office Signing/ { print $2; exit }')"
-          if [[ "$identity" != "Router Quota Office Signing" ]]; then
-            echo "The certificate secret does not contain a usable office signing identity." >&2
-            exit 1
-          fi
+          existing_keychains=()
+          while IFS= read -r existing_keychain; do
+            existing_keychain="${existing_keychain#*\"}"
+            existing_keychain="${existing_keychain%\"*}"
+            [[ -n "$existing_keychain" ]] && existing_keychains+=("$existing_keychain")
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "$keychain_path" "${existing_keychains[@]}"
 
           {
-            echo "OFFICE_SIGN_IDENTITY=$identity"
+            echo "OFFICE_SIGN_IDENTITY=$actual_fingerprint"
             echo "OFFICE_SIGNING_KEYCHAIN_PATH=$keychain_path"
             echo "OFFICE_CERTIFICATE_PATH=$certificate_pem_path"
             echo "OFFICE_P12_PATH=$certificate_path"
