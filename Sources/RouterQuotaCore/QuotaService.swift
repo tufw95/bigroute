@@ -1,5 +1,75 @@
 import Foundation
 
+/// The account ordering preference shared by the app and its widget.
+public enum AccountSortOrder: String, Codable, CaseIterable, Identifiable, Sendable {
+    case quotaDescending
+    case quotaAscending
+    case nameAscending
+    case nameDescending
+    case refreshSoonest
+    case refreshLatest
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .quotaDescending: "Quota: Highest first"
+        case .quotaAscending: "Quota: Lowest first"
+        case .nameAscending: "Account name: A-Z"
+        case .nameDescending: "Account name: Z-A"
+        case .refreshSoonest: "Refresh: Soonest first"
+        case .refreshLatest: "Refresh: Latest first"
+        }
+    }
+
+    public func sorted(_ accounts: [CodexQuotaAccount]) -> [CodexQuotaAccount] {
+        accounts.sorted { lhs, rhs in
+            let comparison: Bool?
+            switch self {
+            case .quotaDescending:
+                comparison = compare(lhs.primaryQuota?.remaining, rhs.primaryQuota?.remaining, descending: true)
+            case .quotaAscending:
+                comparison = compare(lhs.primaryQuota?.remaining, rhs.primaryQuota?.remaining, descending: false)
+            case .nameAscending:
+                comparison = compareNames(lhs.label, rhs.label, descending: false)
+            case .nameDescending:
+                comparison = compareNames(lhs.label, rhs.label, descending: true)
+            case .refreshSoonest:
+                comparison = compare(resetDate(for: lhs), resetDate(for: rhs), descending: false)
+            case .refreshLatest:
+                comparison = compare(resetDate(for: lhs), resetDate(for: rhs), descending: true)
+            }
+            if let comparison { return comparison }
+            let labelOrder = lhs.label.localizedCaseInsensitiveCompare(rhs.label)
+            if labelOrder != .orderedSame { return labelOrder == .orderedAscending }
+            return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
+        }
+    }
+
+    private func compare<T: Comparable>(_ lhs: T?, _ rhs: T?, descending: Bool) -> Bool? {
+        switch (lhs, rhs) {
+        case (nil, nil): return nil
+        case (nil, _): return false
+        case (_, nil): return true
+        case let (left?, right?) where left == right: return nil
+        case let (left?, right?): return descending ? left > right : left < right
+        }
+    }
+
+    private func compareNames(_ lhs: String, _ rhs: String, descending: Bool) -> Bool? {
+        let result = lhs.localizedCaseInsensitiveCompare(rhs)
+        guard result != .orderedSame else { return nil }
+        return descending ? result == .orderedDescending : result == .orderedAscending
+    }
+
+    private func resetDate(for account: CodexQuotaAccount) -> Date? {
+        guard let raw = account.primaryQuota?.resetAt else { return nil }
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return withFraction.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+    }
+}
+
 public struct CodexQuotaWindow: Codable, Equatable, Identifiable, Sendable {
     public var id: String { key }
     public let key: String
@@ -65,6 +135,97 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         self.resetCredits = resetCredits
         self.status = status
         self.errorCode = errorCode
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, provider, label, name, accountName, displayName, username, userName, email
+        case accountNameSnake = "account_name"
+        case displayNameSnake = "display_name"
+        case userNameSnake = "user_name"
+        case account, user, metadata
+        case plan, limitReached, quotas, resetCredits, status, errorCode
+    }
+
+    private enum IdentityKeys: String, CodingKey {
+        case label, name, accountName, displayName, username, userName, email
+        case accountNameSnake = "account_name"
+        case displayNameSnake = "display_name"
+        case userNameSnake = "user_name"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        provider = try container.decode(String.self, forKey: .provider)
+        guard let identity = Self.firstIdentity(in: container) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.label,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "The quota account does not include an identity field."
+                )
+            )
+        }
+        label = identity
+        plan = try container.decode(String.self, forKey: .plan)
+        limitReached = try container.decode(Bool.self, forKey: .limitReached)
+        quotas = try container.decode([CodexQuotaWindow].self, forKey: .quotas)
+        resetCredits = try container.decode(ResetCredits.self, forKey: .resetCredits)
+        status = try container.decode(String.self, forKey: .status)
+        errorCode = try container.decodeIfPresent(String.self, forKey: .errorCode)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(provider, forKey: .provider)
+        try container.encode(label, forKey: .label)
+        try container.encode(plan, forKey: .plan)
+        try container.encode(limitReached, forKey: .limitReached)
+        try container.encode(quotas, forKey: .quotas)
+        try container.encode(resetCredits, forKey: .resetCredits)
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(errorCode, forKey: .errorCode)
+    }
+
+    private static func firstIdentity(in container: KeyedDecodingContainer<CodingKeys>) -> String? {
+        let direct: [String?] = [
+            (try? container.decodeIfPresent(String.self, forKey: .name)) ?? nil,
+            (try? container.decodeIfPresent(String.self, forKey: .accountName)) ?? nil,
+            (try? container.decodeIfPresent(String.self, forKey: .accountNameSnake)) ?? nil,
+            (try? container.decodeIfPresent(String.self, forKey: .displayName)) ?? nil,
+            (try? container.decodeIfPresent(String.self, forKey: .displayNameSnake)) ?? nil,
+            (try? container.decodeIfPresent(String.self, forKey: .username)) ?? nil,
+            (try? container.decodeIfPresent(String.self, forKey: .userName)) ?? nil,
+            (try? container.decodeIfPresent(String.self, forKey: .userNameSnake)) ?? nil
+        ]
+        if let value = direct.compactMap(Self.nonEmpty).first { return value }
+
+        for key in [CodingKeys.account, .user, .metadata] {
+            guard let nested = try? container.nestedContainer(keyedBy: IdentityKeys.self, forKey: key) else { continue }
+            let values: [String?] = [
+                (try? nested.decodeIfPresent(String.self, forKey: .name)) ?? nil,
+                (try? nested.decodeIfPresent(String.self, forKey: .accountName)) ?? nil,
+                (try? nested.decodeIfPresent(String.self, forKey: .accountNameSnake)) ?? nil,
+                (try? nested.decodeIfPresent(String.self, forKey: .displayName)) ?? nil,
+                (try? nested.decodeIfPresent(String.self, forKey: .displayNameSnake)) ?? nil,
+                (try? nested.decodeIfPresent(String.self, forKey: .username)) ?? nil,
+                (try? nested.decodeIfPresent(String.self, forKey: .userName)) ?? nil,
+                (try? nested.decodeIfPresent(String.self, forKey: .userNameSnake)) ?? nil,
+                (try? nested.decodeIfPresent(String.self, forKey: .label)) ?? nil,
+                (try? nested.decodeIfPresent(String.self, forKey: .email)) ?? nil
+            ]
+            if let value = values.compactMap(Self.nonEmpty).first { return value }
+        }
+        return [
+            (try? container.decodeIfPresent(String.self, forKey: .label)) ?? nil,
+            (try? container.decodeIfPresent(String.self, forKey: .email)) ?? nil
+        ].compactMap(Self.nonEmpty).first
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     public var primaryQuota: CodexQuotaWindow? {

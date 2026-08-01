@@ -22,6 +22,65 @@ import Testing
     #expect(response.accounts.first?.primaryQuota?.resetAt == "2026-08-02T00:00:00Z")
 }
 
+@Test func accountNameTakesPrecedenceOverEmailLabel() throws {
+    let json = Data(#"{"id":"nine-1","label":"person@example.com","name":"Office Mac","provider":"codex","plan":"plus","limitReached":false,"quotas":[],"resetCredits":{"availableCount":0},"status":"available"}"#.utf8)
+    let account = try JSONDecoder().decode(CodexQuotaAccount.self, from: json)
+    #expect(account.label == "Office Mac")
+}
+
+@Test func accountIdentitySupportsNestedNamesAndLegacyLabels() throws {
+    let nestedJSON = Data(#"{"id":"nine-2","provider":"codex","label":"person@example.com","metadata":{"display_name":"Design Mac"},"plan":"plus","limitReached":false,"quotas":[],"resetCredits":{"availableCount":0},"status":"available"}"#.utf8)
+    let nested = try JSONDecoder().decode(CodexQuotaAccount.self, from: nestedJSON)
+    #expect(nested.label == "Design Mac")
+
+    let legacyJSON = Data(#"{"id":"nine-3","provider":"codex","label":"legacy@example.com","plan":"plus","limitReached":false,"quotas":[],"resetCredits":{"availableCount":0},"status":"available"}"#.utf8)
+    let legacy = try JSONDecoder().decode(CodexQuotaAccount.self, from: legacyJSON)
+    #expect(legacy.label == "legacy@example.com")
+}
+
+@Test func accountDecoderRejectsIncompleteQuotaRecords() {
+    let incomplete = Data(#"{"id":"nine-4","name":"Incomplete"}"#.utf8)
+    #expect(throws: DecodingError.self) {
+        try JSONDecoder().decode(CodexQuotaAccount.self, from: incomplete)
+    }
+}
+
+@Test func accountSortOrdersKeepMissingValuesLast() {
+    let make: (String, Double?, String?) -> CodexQuotaAccount = { id, remaining, resetAt in
+        CodexQuotaAccount(
+            id: id,
+            provider: "9router",
+            label: id,
+            plan: "",
+            limitReached: false,
+            quotas: remaining.map {
+                [CodexQuotaWindow(
+                    key: "session",
+                    used: 100 - $0,
+                    total: 100,
+                    remaining: $0,
+                    resetAt: resetAt,
+                    unlimited: false
+                )]
+            } ?? [],
+            resetCredits: .init(availableCount: 0),
+            status: "available",
+            errorCode: nil
+        )
+    }
+    let accounts = [
+        make("No quota", nil, nil),
+        make("Low", 20, "2026-08-05T00:00:00Z"),
+        make("High", 80, "2026-08-03T00:00:00Z")
+    ]
+    #expect(AccountSortOrder.quotaDescending.sorted(accounts).map(\.label) == ["High", "Low", "No quota"])
+    #expect(AccountSortOrder.quotaAscending.sorted(accounts).map(\.label) == ["Low", "High", "No quota"])
+    #expect(AccountSortOrder.nameAscending.sorted(accounts).map(\.label) == ["High", "Low", "No quota"])
+    #expect(AccountSortOrder.nameDescending.sorted(accounts).map(\.label) == ["No quota", "Low", "High"])
+    #expect(AccountSortOrder.refreshSoonest.sorted(accounts).map(\.label) == ["High", "Low", "No quota"])
+    #expect(AccountSortOrder.refreshLatest.sorted(accounts).map(\.label) == ["Low", "High", "No quota"])
+}
+
 @Test func sharedSnapshotRoundTrip() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let store = SharedQuotaStore(fileURL: directory.appendingPathComponent("snapshot.json"))
@@ -30,9 +89,14 @@ import Testing
         quotas: [CodexQuotaWindow(key: "session", used: 25, total: 100, remaining: 75, resetAt: nil, unlimited: false)],
         resetCredits: .init(availableCount: 0), status: "valid", errorCode: nil
     )
-    let snapshot = RouterQuotaSnapshot(accounts: [account], generatedAt: Date(timeIntervalSince1970: 1_700_000_000))
+    let snapshot = RouterQuotaSnapshot(
+        accounts: [account],
+        generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
+        sortOrder: .nameAscending
+    )
     try store.save(snapshot)
     #expect(store.load() == snapshot)
+    #expect(store.load()?.sortOrder == .nameAscending)
     try? FileManager.default.removeItem(at: directory)
 }
 

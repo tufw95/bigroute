@@ -30,16 +30,28 @@ public struct ProviderQuotaSnapshot: Codable, Equatable, Identifiable, Sendable 
 public struct RouterQuotaSnapshot: Codable, Equatable, Sendable {
     public let providers: [ProviderQuotaSnapshot]
     public let generatedAt: Date
+    public let sortOrder: AccountSortOrder
 
-    public init(providers: [ProviderQuotaSnapshot], generatedAt: Date = Date()) {
+    public init(
+        providers: [ProviderQuotaSnapshot],
+        generatedAt: Date = Date(),
+        sortOrder: AccountSortOrder = .quotaDescending
+    ) {
         self.providers = providers
         self.generatedAt = generatedAt
+        self.sortOrder = sortOrder
     }
 
     /// Compatibility initializer used by previews and legacy cache imports.
-    public init(accounts: [CodexQuotaAccount], generatedAt: Date = Date(), lastError: String? = nil) {
+    public init(
+        accounts: [CodexQuotaAccount],
+        generatedAt: Date = Date(),
+        lastError: String? = nil,
+        sortOrder: AccountSortOrder = .quotaDescending
+    ) {
         self.providers = Self.legacyProviders(accounts: accounts, updatedAt: generatedAt, lastError: lastError)
         self.generatedAt = generatedAt
+        self.sortOrder = sortOrder
     }
 
     public var accounts: [CodexQuotaAccount] { providers.flatMap(\.accounts) }
@@ -65,8 +77,12 @@ public struct RouterQuotaSnapshot: Codable, Equatable, Sendable {
         provider(id: providerID)?.accounts ?? []
     }
 
+    public func withSortOrder(_ sortOrder: AccountSortOrder) -> RouterQuotaSnapshot {
+        RouterQuotaSnapshot(providers: providers, generatedAt: generatedAt, sortOrder: sortOrder)
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case providers, generatedAt, accounts, lastError
+        case providers, generatedAt, sortOrder, accounts, lastError
     }
 
     public init(from decoder: Decoder) throws {
@@ -79,12 +95,14 @@ public struct RouterQuotaSnapshot: Codable, Equatable, Sendable {
             let error = try container.decodeIfPresent(String.self, forKey: .lastError)
             providers = Self.legacyProviders(accounts: accounts, updatedAt: generatedAt, lastError: error)
         }
+        sortOrder = try container.decodeIfPresent(AccountSortOrder.self, forKey: .sortOrder) ?? .quotaDescending
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(providers, forKey: .providers)
         try container.encode(generatedAt, forKey: .generatedAt)
+        try container.encode(sortOrder, forKey: .sortOrder)
     }
 
     private static func legacyProviders(

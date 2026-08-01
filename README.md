@@ -9,7 +9,8 @@ Router Quota is a native macOS menu bar app and WidgetKit extension for monitori
 - Add any number of providers using a display name, HTTPS endpoint, and API key.
 - Automatically understand supported OmniRouter and 9Router quota responses.
 - Hide provider tabs when only one provider is configured.
-- Sort accounts by remaining quota, highest first.
+- Choose quota, account-name, or refresh-time sorting in either direction; the app and widget stay in sync.
+- Prefer provider-defined account names over email labels when the quota endpoint exposes them.
 - Show remaining quota, account state, and time until quota refresh.
 - Refresh providers in parallel every 1–60 minutes; the default is 2 minutes.
 - Store API keys in macOS Keychain and share only sanitized quota snapshots with the widget.
@@ -47,6 +48,8 @@ Open **Router Quota > Settings**, then add a provider with:
 - **API key:** the credential allowed to read that provider's quota endpoint.
 
 If only one provider exists, the provider picker is hidden. With multiple providers, use the centered picker to switch between them. API keys stay in macOS Keychain and are never copied into WidgetKit snapshots or release artifacts.
+
+Router Quota displays account identity in this order: provider-defined name, account name, display name, username, legacy label, email, then account ID. A router endpoint that returns only an email in `label` cannot be resolved to the private account name by the app; that endpoint must expose `name` or use the configured name as its `label`.
 
 ## Add the Widget to the Desktop
 

@@ -25,6 +25,10 @@ final class QuotaMonitor {
         snapshot = snapshotStore.load()
             ?? snapshotStore.loadLegacySnapshot()
             ?? RouterQuotaSnapshot(providers: [])
+        if snapshot.sortOrder != configuration.sortOrder {
+            snapshot = snapshot.withSortOrder(configuration.sortOrder)
+            try? snapshotStore.save(snapshot)
+        }
         selectedProviderID = configuration.providers.first(where: \.isEnabled)?.id
             ?? snapshot.providers.first?.id
         if snapshotStore.load() == nil, !snapshot.providers.isEmpty {
@@ -69,6 +73,11 @@ final class QuotaMonitor {
         do {
             try validate(configuration)
             try credentialStore.save(configuration)
+            snapshot = snapshot.withSortOrder(configuration.sortOrder)
+            try snapshotStore.save(snapshot)
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
             errorMessage = nil
             if !enabledProviders.contains(where: { $0.id == selectedProviderID }) {
                 selectedProviderID = enabledProviders.first?.id
@@ -122,7 +131,11 @@ final class QuotaMonitor {
                 )
             }
 
-            snapshot = RouterQuotaSnapshot(providers: snapshots, generatedAt: now)
+            snapshot = RouterQuotaSnapshot(
+                providers: snapshots,
+                generatedAt: now,
+                sortOrder: configuration.sortOrder
+            )
             do {
                 try snapshotStore.save(snapshot)
                 #if canImport(WidgetKit)

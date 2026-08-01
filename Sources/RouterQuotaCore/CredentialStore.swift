@@ -4,10 +4,16 @@ import Security
 public struct RouterQuotaConfiguration: Equatable, Sendable {
     public var providers: [CustomQuotaProvider]
     public var refreshIntervalMinutes: Int
+    public var sortOrder: AccountSortOrder
 
-    public init(providers: [CustomQuotaProvider] = [], refreshIntervalMinutes: Int = 2) {
+    public init(
+        providers: [CustomQuotaProvider] = [],
+        refreshIntervalMinutes: Int = 2,
+        sortOrder: AccountSortOrder = .quotaDescending
+    ) {
         self.providers = providers
         self.refreshIntervalMinutes = refreshIntervalMinutes
+        self.sortOrder = sortOrder
     }
 
     public static let defaults = RouterQuotaConfiguration()
@@ -32,6 +38,7 @@ public struct CredentialStore: @unchecked Sendable {
         let schemaVersion: Int
         let providers: [PersistedProvider]
         let refreshIntervalMinutes: Int
+        let sortOrder: AccountSortOrder?
     }
 
     private struct LegacySettings: Codable {
@@ -59,7 +66,8 @@ public struct CredentialStore: @unchecked Sendable {
                         isEnabled: provider.isEnabled
                     )
                 },
-                refreshIntervalMinutes: min(60, max(1, persisted.refreshIntervalMinutes))
+                refreshIntervalMinutes: min(60, max(1, persisted.refreshIntervalMinutes)),
+                sortOrder: persisted.sortOrder ?? .quotaDescending
             )
         }
 
@@ -88,9 +96,10 @@ public struct CredentialStore: @unchecked Sendable {
         }
 
         let settings = PersistedSettings(
-            schemaVersion: 2,
+            schemaVersion: 3,
             providers: providers,
-            refreshIntervalMinutes: min(60, max(1, configuration.refreshIntervalMinutes))
+            refreshIntervalMinutes: min(60, max(1, configuration.refreshIntervalMinutes)),
+            sortOrder: configuration.sortOrder
         )
         let data = try JSONEncoder().encode(settings)
         defaults.set(data, forKey: v2ConfigKey)
@@ -160,7 +169,11 @@ public struct CredentialStore: @unchecked Sendable {
                 apiKind: .omniRouter
             ))
         }
-        return RouterQuotaConfiguration(providers: providers, refreshIntervalMinutes: refresh)
+        return RouterQuotaConfiguration(
+            providers: providers,
+            refreshIntervalMinutes: refresh,
+            sortOrder: .quotaDescending
+        )
     }
 
     private static func parseEnv(_ content: String) -> [String: String] {

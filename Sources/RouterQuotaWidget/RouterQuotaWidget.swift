@@ -185,14 +185,7 @@ struct ProviderWidgetView: View {
     }
 
     private var accounts: [CodexQuotaAccount] {
-        (provider?.accounts ?? []).sorted {
-            let left = $0.primaryQuota?.remaining ?? -1
-            let right = $1.primaryQuota?.remaining ?? -1
-            if left == right {
-                return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
-            }
-            return left > right
-        }
+        entry.snapshot.sortOrder.sorted(provider?.accounts ?? [])
     }
 
     private var columns: [GridItem] {

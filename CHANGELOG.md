@@ -13,6 +13,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Native macOS menu bar quota monitor with custom provider configuration.
 - WidgetKit extension with provider selection and large account layouts.
 - Keychain-backed API credentials and sanitized widget snapshots.
+- Provider-defined account names with safe fallback to legacy email labels.
+- Six persisted account sort modes shared by the menu bar app and WidgetKit.
 - Developer ID signed, notarized universal release pipeline.
 - Sparkle 2 automatic updates delivered through GitHub Releases.
 

@@ -61,7 +61,7 @@ struct DashboardView: View {
                 Text("Router Quota").font(.headline)
                 Group {
                     if let provider = currentProvider {
-                        Text("\(accounts.count) \(provider.name) accounts · sorted by quota")
+                        Text("\(accounts.count) \(provider.name) accounts · \(monitor.configuration.sortOrder.title)")
                     } else {
                         Text("Add a provider in Settings")
                     }
@@ -144,16 +144,7 @@ struct DashboardView: View {
 
     private var accounts: [CodexQuotaAccount] {
         guard let id = currentProvider?.id else { return [] }
-        return monitor.snapshot.accounts(for: id).sorted(by: Self.quotaDescending)
-    }
-
-    static func quotaDescending(_ lhs: CodexQuotaAccount, _ rhs: CodexQuotaAccount) -> Bool {
-        let left = lhs.primaryQuota?.remaining ?? -1
-        let right = rhs.primaryQuota?.remaining ?? -1
-        if left == right {
-            return lhs.label.localizedCaseInsensitiveCompare(rhs.label) == .orderedAscending
-        }
-        return left > right
+        return monitor.configuration.sortOrder.sorted(monitor.snapshot.accounts(for: id))
     }
 }
 
@@ -280,6 +271,17 @@ struct SettingsView: View {
                 Text("The app automatically recognizes 9Router and OmniRouter quota responses. API keys are stored in Keychain.")
             }
 
+            Section("Display") {
+                Picker("Sort accounts by", selection: $monitor.configuration.sortOrder) {
+                    ForEach(AccountSortOrder.allCases) { order in
+                        Text(order.title).tag(order)
+                    }
+                }
+                Text("Changes apply immediately to the menu bar and every widget. Accounts without the selected value stay at the end.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Refresh") {
                 Stepper(
                     "App checks every \(monitor.configuration.refreshIntervalMinutes) minutes",
@@ -291,7 +293,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 HStack {
                     Spacer()
-                    Button("Save and Refresh") { monitor.saveConfiguration() }
+                    Button("Save and Refresh Now") { monitor.saveConfiguration() }
                         .buttonStyle(.borderedProminent)
                 }
             }
@@ -316,6 +318,9 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onChange(of: monitor.configuration.sortOrder) { _, _ in
+            monitor.saveConfiguration()
+        }
         .navigationTitle("Router Quota")
         .sheet(item: $editingProvider) { provider in
             ProviderEditorView(provider: provider) { updated in
