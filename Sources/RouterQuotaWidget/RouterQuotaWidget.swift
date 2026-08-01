@@ -70,7 +70,7 @@ struct RouterQuotaTimelineProvider: AppIntentTimelineProvider {
         let now = Date()
         return Timeline(
             entries: [entry(configuration: configuration, date: now)],
-            policy: .after(now.addingTimeInterval(5 * 60))
+            policy: .after(now.addingTimeInterval(15 * 60))
         )
     }
 
@@ -164,7 +164,7 @@ struct ProviderWidgetView: View {
                     .font(.headline)
                     .lineLimit(1)
                 if let provider {
-                    Text(providerStatus(provider))
+                    providerStatus(provider)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -219,20 +219,12 @@ struct ProviderWidgetView: View {
         return URL(string: "routerquota://provider/\(id.uuidString)")
     }
 
-    private func providerStatus(_ provider: ProviderQuotaSnapshot) -> String {
+    private func providerStatus(_ provider: ProviderQuotaSnapshot) -> Text {
         let count = accounts.count > accountLimit
             ? "Showing \(accountLimit) of \(accounts.count) accounts"
             : "\(accounts.count) accounts"
-        guard let updatedAt = provider.updatedAt else { return "\(count) · Not updated yet" }
-        return "\(count) · Updated \(ageDescription(updatedAt))"
-    }
-
-    private func ageDescription(_ date: Date) -> String {
-        let seconds = max(0, Int(Date().timeIntervalSince(date)))
-        if seconds < 60 { return "just now" }
-        if seconds < 3_600 { return "\(max(1, seconds / 60)) min ago" }
-        if seconds < 86_400 { return "\(seconds / 3_600) hr ago" }
-        return "\(seconds / 86_400) d ago"
+        guard let updatedAt = provider.updatedAt else { return Text("\(count) · Not updated yet") }
+        return Text("\(count) · Updated ") + Text(updatedAt, style: .relative)
     }
 }
 

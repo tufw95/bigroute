@@ -310,10 +310,11 @@ public final class QuotaService: @unchecked Sendable {
             throw QuotaServiceError.invalidResponse
         }
 
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.timeoutInterval = 25
 
         let (data, response) = try await session.data(for: request)
@@ -523,10 +524,11 @@ public final class OmniQuotaService: @unchecked Sendable {
             throw QuotaServiceError.invalidResponse
         }
 
-        var request = URLRequest(url: requestURL)
+        var request = URLRequest(url: requestURL, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.timeoutInterval = 25
         return request
     }

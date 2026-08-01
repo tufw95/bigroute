@@ -10,6 +10,9 @@ import WidgetKit
 @MainActor
 @Observable
 final class QuotaMonitor {
+    private static let widgetKind = "CustomProviderQuotaWidget"
+    private static let automaticWidgetReloadInterval: TimeInterval = 5 * 60
+
     var configuration: RouterQuotaConfiguration
     var snapshot: RouterQuotaSnapshot
     var selectedProviderID: UUID?
@@ -19,6 +22,7 @@ final class QuotaMonitor {
     private let credentialStore = CredentialStore()
     private let snapshotStore = SharedQuotaStore()
     private var timer: Timer?
+    private var lastWidgetReloadAt: Date?
 
     init() {
         configuration = credentialStore.load()
@@ -75,9 +79,6 @@ final class QuotaMonitor {
             try credentialStore.save(configuration)
             snapshot = snapshot.withSortOrder(configuration.sortOrder)
             try snapshotStore.save(snapshot)
-            #if canImport(WidgetKit)
-            WidgetCenter.shared.reloadAllTimelines()
-            #endif
             errorMessage = nil
             if !enabledProviders.contains(where: { $0.id == selectedProviderID }) {
                 selectedProviderID = enabledProviders.first?.id
@@ -136,11 +137,19 @@ final class QuotaMonitor {
                 generatedAt: now,
                 sortOrder: configuration.sortOrder
             )
+            let widgetContentChanged = previousSnapshot.sortOrder != snapshot.sortOrder
+                || snapshots.count != previousSnapshot.providers.count
+                || snapshots.contains { current in
+                    guard let previous = previousSnapshot.provider(id: current.id) else { return true }
+                    return previous.name != current.name
+                        || previous.accounts != current.accounts
+                        || previous.lastError != current.lastError
+                }
             do {
                 try snapshotStore.save(snapshot)
-                #if canImport(WidgetKit)
-                WidgetCenter.shared.reloadAllTimelines()
-                #endif
+                if force || widgetContentChanged || lastWidgetReloadAt == nil {
+                    reloadWidget(force: force)
+                }
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -157,6 +166,19 @@ final class QuotaMonitor {
         timer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
+    }
+
+    private func reloadWidget(force: Bool) {
+        #if canImport(WidgetKit)
+        let now = Date()
+        if !force,
+           let lastWidgetReloadAt,
+           now.timeIntervalSince(lastWidgetReloadAt) < Self.automaticWidgetReloadInterval {
+            return
+        }
+        self.lastWidgetReloadAt = now
+        WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
+        #endif
     }
 
     private func validate(_ configuration: RouterQuotaConfiguration) throws {

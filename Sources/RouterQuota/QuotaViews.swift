@@ -43,7 +43,7 @@ struct DashboardView: View {
             }
             footer
         }
-        .frame(width: 760, height: 790)
+        .frame(width: 700, height: 790)
         .background(.regularMaterial)
     }
 
@@ -288,7 +288,7 @@ struct SettingsView: View {
                     value: $monitor.configuration.refreshIntervalMinutes,
                     in: 1...60
                 )
-                Text("The widget reads the latest app snapshot and requests a timeline refresh every 5 minutes. macOS may delay widget redraws, so the exact timing is controlled by WidgetKit.")
+                Text("The app refreshes widget data on the selected schedule and asks WidgetKit to redraw at most every 5 minutes. Refresh Now requests an immediate redraw, with a 15-minute WidgetKit fallback. macOS may still delay the exact timing.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack {

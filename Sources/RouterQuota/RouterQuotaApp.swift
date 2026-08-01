@@ -83,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = NSPopover()
         panel.behavior = .transient
         panel.animates = true
-        panel.contentSize = NSSize(width: 760, height: 790)
+        panel.contentSize = NSSize(width: 700, height: 790)
         panel.contentViewController = NSHostingController(
             rootView: DashboardView()
                 .environment(monitor)

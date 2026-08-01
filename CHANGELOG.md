@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-01
+
+### Fixed
+
+- Coalesced content-aware, targeted WidgetKit reloads to avoid timeline-budget throttling and stale quota cards.
+- Made the widget freshness label advance independently of timeline redraws.
+- Bypassed local HTTP caches for provider quota requests.
+- Reduced the menu-bar popover width for a denser two-column account layout.
+
 ## [1.0.0] - 2026-08-01
 
 ### Added
@@ -21,5 +30,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/router-quota/compare/office-v1.0.0...HEAD
+[Unreleased]: https://github.com/tufw95/router-quota/compare/office-v1.0.1...HEAD
+[1.0.1]: https://github.com/tufw95/router-quota/releases/tag/office-v1.0.1
 [1.0.0]: https://github.com/tufw95/router-quota/releases/tag/office-v1.0.0
