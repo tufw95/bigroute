@@ -110,15 +110,26 @@ jobs:
             exit 1
           fi
 
+          # Hosted macOS runners require self-signed identities to be trusted
+          # in the system domain before codesign exposes their private keys.
+          sudo security add-trusted-cert \
+            -d -p codeSign -r trustRoot \
+            -k /Library/Keychains/System.keychain \
+            "$certificate_pem_path"
           security set-key-partition-list \
             -S apple-tool:,apple:,codesign: \
             -s -k "$keychain_password" \
             "$keychain_path" >/dev/null
 
+          identity="$(security find-identity -v -p codesigning "$keychain_path" \
+            | awk -F '"' '/Router Quota Office Signing/ { print $2; exit }')"
+          if [[ "$identity" != "Router Quota Office Signing" ]]; then
+            echo "The certificate secret does not contain a usable office signing identity." >&2
+            exit 1
+          fi
+
           {
-            # codesign accepts the pinned certificate hash even though the
-            # self-signed identity is intentionally not trusted by Gatekeeper.
-            echo "OFFICE_SIGN_IDENTITY=$actual_fingerprint"
+            echo "OFFICE_SIGN_IDENTITY=$identity"
             echo "OFFICE_SIGNING_KEYCHAIN_PATH=$keychain_path"
             echo "OFFICE_CERTIFICATE_PATH=$certificate_pem_path"
             echo "OFFICE_P12_PATH=$certificate_path"
@@ -224,6 +235,9 @@ jobs:
         if: always()
         shell: bash
         run: |
+          if [[ -n "${OFFICE_CERTIFICATE_PATH:-}" ]]; then
+            sudo security remove-trusted-cert -d "$OFFICE_CERTIFICATE_PATH" >/dev/null 2>&1 || true
+          fi
           if [[ -n "${OFFICE_SIGNING_KEYCHAIN_PATH:-}" ]]; then
             security delete-keychain "$OFFICE_SIGNING_KEYCHAIN_PATH" >/dev/null 2>&1 || true
           fi
