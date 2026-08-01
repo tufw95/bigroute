@@ -42,6 +42,7 @@ codesign --verify --deep --strict "$APP"
 ditto "$APP" "$INSTALLED_APP"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
   -f -R -trusted "$INSTALLED_APP"
+pluginkit -r "$APP/Contents/PlugIns/RouterQuotaWidget.appex" 2>/dev/null || true
 pluginkit -a "$INSTALLED_APP/Contents/PlugIns/RouterQuotaWidget.appex" 2>/dev/null || true
 APP="$INSTALLED_APP"
 
