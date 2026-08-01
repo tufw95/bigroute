@@ -172,9 +172,11 @@ jobs:
           xcrun stapler validate "$dmg"
           spctl --assess --type execute --verbose=2 "$app"
           spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
-          lipo "$app/Contents/MacOS/RouterQuota" -verify_arch arm64 x86_64
-          lipo "$app/Contents/PlugIns/RouterQuotaWidget.appex/Contents/MacOS/RouterQuotaWidget" \
-            -verify_arch arm64 x86_64
+          lipo -verify_arch arm64 "$app/Contents/MacOS/RouterQuota"
+          lipo -verify_arch x86_64 "$app/Contents/MacOS/RouterQuota"
+          widget="$app/Contents/PlugIns/RouterQuotaWidget.appex/Contents/MacOS/RouterQuotaWidget"
+          lipo -verify_arch arm64 "$widget"
+          lipo -verify_arch x86_64 "$widget"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "com.routerquota.app"
           grep -Eq '<enclosure[^>]+sparkle:edSignature=' "$appcast"

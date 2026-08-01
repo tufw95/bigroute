@@ -1,7 +1,6 @@
 # Router Quota
 
 [![CI](https://github.com/tufw95/router-quota/actions/workflows/ci.yml/badge.svg)](https://github.com/tufw95/router-quota/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/tufw95/router-quota)](https://github.com/tufw95/router-quota/releases/latest)
 
 Router Quota is a native macOS menu bar app and WidgetKit extension for monitoring account quota from user-configured router providers.
 
@@ -20,6 +19,17 @@ Router Quota is a native macOS menu bar app and WidgetKit extension for monitori
 ## Install
 
 Router Quota requires macOS 14 or later on Apple Silicon or Intel Macs.
+
+The current [0.9.0 Preview 1](https://github.com/tufw95/router-quota/releases/tag/preview-0.9.0-1) is available for internal team testing:
+
+1. Download `Router-Quota-0.9.0-preview.1.dmg`.
+2. Open the DMG and drag **Router Quota** to **Applications**.
+3. On first launch, macOS may require **Right-click > Open** or **System Settings > Privacy & Security > Open Anyway** because the preview is ad-hoc signed.
+4. Open Router Quota once, then add providers from **Settings**.
+
+The preview is universal but is not notarized. Widget discovery can vary until both targets are signed and provisioned by the same Apple Developer team. Sparkle OTA is configured in the app, but the first stable update feed will be published only after production signing credentials are available.
+
+For a stable release:
 
 1. Open the [latest GitHub release](https://github.com/tufw95/router-quota/releases/latest).
 2. Download `Router-Quota-<version>.dmg`.

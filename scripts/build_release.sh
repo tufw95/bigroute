@@ -202,8 +202,10 @@ codesign --force --options runtime --timestamp \
   "$DIST_APP"
 
 codesign --verify --deep --strict --verbose=2 "$DIST_APP"
-lipo "$DIST_APP/Contents/MacOS/RouterQuota" -verify_arch arm64 x86_64
-lipo "$WIDGET/Contents/MacOS/RouterQuotaWidget" -verify_arch arm64 x86_64
+lipo -verify_arch arm64 "$DIST_APP/Contents/MacOS/RouterQuota"
+lipo -verify_arch x86_64 "$DIST_APP/Contents/MacOS/RouterQuota"
+lipo -verify_arch arm64 "$WIDGET/Contents/MacOS/RouterQuotaWidget"
+lipo -verify_arch x86_64 "$WIDGET/Contents/MacOS/RouterQuotaWidget"
 
 validate_signed_entitlements() {
   local bundle="$1"
