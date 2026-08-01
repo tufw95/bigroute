@@ -63,7 +63,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover?.performClose(nil)
             DispatchQueue.main.async {
                 NSApp.activate(ignoringOtherApps: true)
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                // Keep widget deep links on the native popover path. The
+                // SettingsLink inside it opens the SwiftUI Settings scene.
+                self.showPopover()
             }
             return
         }
