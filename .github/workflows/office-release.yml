@@ -110,23 +110,15 @@ jobs:
             exit 1
           fi
 
-          security add-trusted-cert -p codeSign -r trustRoot \
-            -k "$keychain_path" \
-            "$certificate_pem_path"
           security set-key-partition-list \
             -S apple-tool:,apple:,codesign: \
             -s -k "$keychain_password" \
             "$keychain_path" >/dev/null
 
-          identity="$(security find-identity -v -p codesigning "$keychain_path" \
-            | awk -F '"' '/Router Quota Office Signing/ { print $2; exit }')"
-          if [[ "$identity" != "Router Quota Office Signing" ]]; then
-            echo "The certificate secret does not contain the expected office signing identity." >&2
-            exit 1
-          fi
-
           {
-            echo "OFFICE_SIGN_IDENTITY=$identity"
+            # codesign accepts the pinned certificate hash even though the
+            # self-signed identity is intentionally not trusted by Gatekeeper.
+            echo "OFFICE_SIGN_IDENTITY=$actual_fingerprint"
             echo "OFFICE_SIGNING_KEYCHAIN_PATH=$keychain_path"
             echo "OFFICE_CERTIFICATE_PATH=$certificate_pem_path"
             echo "OFFICE_P12_PATH=$certificate_path"
@@ -232,9 +224,6 @@ jobs:
         if: always()
         shell: bash
         run: |
-          if [[ -n "${OFFICE_CERTIFICATE_PATH:-}" ]]; then
-            security remove-trusted-cert "$OFFICE_CERTIFICATE_PATH" >/dev/null 2>&1 || true
-          fi
           if [[ -n "${OFFICE_SIGNING_KEYCHAIN_PATH:-}" ]]; then
             security delete-keychain "$OFFICE_SIGNING_KEYCHAIN_PATH" >/dev/null 2>&1 || true
           fi
