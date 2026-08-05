@@ -19,6 +19,9 @@ jobs:
     environment: release
     env:
       DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      APP_BUNDLE_ID: com.routerquota.app
+      WIDGET_BUNDLE_ID: com.routerquota.app.widget
+      SPARKLE_PUBLIC_KEY: M3PQhg/ygRWtEttOkX73X9GXG4LXfCwMDNr/aUoxUMQ=
       MACOS_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_BASE64 }}
       MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
       MACOS_APP_PROVISIONING_PROFILE_BASE64: ${{ secrets.MACOS_APP_PROVISIONING_PROFILE_BASE64 }}
@@ -106,10 +109,10 @@ jobs:
         run: |
           set -euo pipefail
           certificate_path="$RUNNER_TEMP/developer-id.p12"
-          app_profile_path="$RUNNER_TEMP/RouterQuota.provisionprofile"
-          widget_profile_path="$RUNNER_TEMP/RouterQuotaWidget.provisionprofile"
+          app_profile_path="$RUNNER_TEMP/Bigroute.provisionprofile"
+          widget_profile_path="$RUNNER_TEMP/BigrouteWidget.provisionprofile"
           sparkle_key_path="$RUNNER_TEMP/sparkle-ed25519-private-key"
-          keychain_path="$RUNNER_TEMP/router-quota-signing.keychain-db"
+          keychain_path="$RUNNER_TEMP/bigroute-signing.keychain-db"
           keychain_password="$(openssl rand -hex 32)"
 
           printf '%s' "$MACOS_DEVELOPER_ID_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
@@ -168,9 +171,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          app="dist/Router Quota.app"
-          dmg="dist/Router-Quota-$VERSION.dmg"
-          zip="dist/Router-Quota-$VERSION.zip"
+          app="dist/Bigroute.app"
+          dmg="dist/Bigroute-$VERSION.dmg"
+          zip="dist/Bigroute-$VERSION.zip"
           appcast="dist/appcast.xml"
 
           test -s "$dmg"
@@ -181,18 +184,22 @@ jobs:
           xcrun stapler validate "$dmg"
           spctl --assess --type execute --verbose=2 "$app"
           spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
-          lipo "$app/Contents/MacOS/RouterQuota" -verify_arch arm64
-          lipo "$app/Contents/MacOS/RouterQuota" -verify_arch x86_64
-          widget="$app/Contents/PlugIns/RouterQuotaWidget.appex/Contents/MacOS/RouterQuotaWidget"
+          lipo "$app/Contents/MacOS/Bigroute" -verify_arch arm64
+          lipo "$app/Contents/MacOS/Bigroute" -verify_arch x86_64
+          widget_bundle="$app/Contents/PlugIns/BigrouteWidget.appex"
+          widget="$widget_bundle/Contents/MacOS/BigrouteWidget"
           lipo "$widget" -verify_arch arm64
           lipo "$widget" -verify_arch x86_64
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$VERSION"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "com.routerquota.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$app/Contents/Info.plist")" = "Bigroute"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "$APP_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$widget_bundle/Contents/Info.plist")" = "$WIDGET_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")" = "$SPARKLE_PUBLIC_KEY"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app/Contents/Info.plist")" \
             = "https://github.com/${{ github.repository }}/releases/download/stable-channel/appcast.xml"
           grep -Eq '<enclosure[^>]+sparkle:edSignature=' "$appcast"
           grep -q 'sparkle-signatures:' "$appcast"
-          grep -q "Router-Quota-$VERSION.zip" "$appcast"
+          grep -q "Bigroute-$VERSION.zip" "$appcast"
 
       - name: Create GitHub release
         env:
@@ -218,10 +225,10 @@ jobs:
           gh release create "$TAG" \
             --verify-tag \
             --target "$GITHUB_SHA" \
-            --title "Router Quota $VERSION" \
+            --title "Bigroute $VERSION" \
             --notes-file "$notes_path" \
-            "dist/Router-Quota-$VERSION.dmg" \
-            "dist/Router-Quota-$VERSION.zip" \
+            "dist/Bigroute-$VERSION.dmg" \
+            "dist/Bigroute-$VERSION.zip" \
             "dist/appcast.xml"
 
       - name: Update stable channel feed
@@ -231,12 +238,18 @@ jobs:
         run: |
           set -euo pipefail
           channel_tag="stable-channel"
+          channel_title="Bigroute Stable Update Channel"
+          channel_notes="Signed Sparkle feed for Developer ID builds. Download installers from the latest stable release."
           if ! gh release view "$channel_tag" >/dev/null 2>&1; then
             gh release create "$channel_tag" \
               --target "$GITHUB_SHA" \
               --prerelease \
-              --title "Router Quota Stable Update Channel" \
-              --notes "Signed Sparkle feed for Developer ID builds. Download installers from the latest stable release."
+              --title "$channel_title" \
+              --notes "$channel_notes"
+          else
+            gh release edit "$channel_tag" \
+              --title "$channel_title" \
+              --notes "$channel_notes"
           fi
           gh release upload "$channel_tag" dist/appcast.xml --clobber
 

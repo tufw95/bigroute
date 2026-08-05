@@ -33,11 +33,11 @@ jobs:
       - name: Build Debug app and widget
         run: |
           xcodebuild \
-            -project RouterQuota.xcodeproj \
-            -scheme RouterQuota \
+            -project Bigroute.xcodeproj \
+            -scheme Bigroute \
             -configuration Debug \
             -destination 'generic/platform=macOS' \
-            -derivedDataPath "$RUNNER_TEMP/RouterQuotaDerivedData" \
+            -derivedDataPath "$RUNNER_TEMP/BigrouteDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             build
 

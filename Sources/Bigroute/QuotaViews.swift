@@ -1,6 +1,6 @@
 import AppKit
 #if SWIFT_PACKAGE
-import RouterQuotaCore
+import BigrouteCore
 #endif
 import SwiftUI
 
@@ -87,11 +87,9 @@ struct DashboardView: View {
 
     private var header: some View {
         HStack(spacing: 11) {
-            Image(systemName: "gauge.with.dots.needle.50percent")
-                .font(.system(size: 20, weight: .semibold))
-                .symbolRenderingMode(.hierarchical)
+            BigrouteMark(size: 21)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Router Quota").font(.headline)
+                Text("Bigroute").font(.headline)
                 Group {
                     if let provider = currentProvider {
                         Text("\(accounts.count) \(provider.name) accounts · \(monitor.configuration.sortOrder.title)")
@@ -334,7 +332,7 @@ struct SettingsView: View {
             Section("Updates") {
                 LabeledContent("Installed version", value: versionDescription)
                 HStack {
-                    Text("Router Quota checks GitHub Releases automatically and installs signed updates in the background.")
+                    Text("Bigroute checks GitHub Releases automatically and installs signed updates in the background.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -354,7 +352,7 @@ struct SettingsView: View {
         .onChange(of: monitor.configuration.sortOrder) { _, _ in
             monitor.saveConfiguration()
         }
-        .navigationTitle("Router Quota")
+        .navigationTitle("Bigroute")
         .sheet(item: $editingProvider) { provider in
             ProviderEditorView(provider: provider) { updated in
                 monitor.upsertProvider(updated)
@@ -381,6 +379,25 @@ struct SettingsView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"
         return "\(version) (\(build))"
+    }
+}
+
+private struct BigrouteMark: View {
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let markURL = Bundle.main.url(forResource: "BigrouteMark", withExtension: "svg"),
+               let image = NSImage(contentsOf: markURL) {
+                Image(nsImage: image)
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+            }
+        }
+        .frame(width: size, height: size)
+        .foregroundStyle(.primary)
+        .accessibilityHidden(true)
     }
 }
 

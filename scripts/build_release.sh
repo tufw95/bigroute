@@ -13,13 +13,13 @@ DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 APP_BUNDLE_ID="com.routerquota.app"
 WIDGET_BUNDLE_ID="com.routerquota.app.widget"
 APP_GROUP="group.com.routerquota.shared"
-PROJECT="$ROOT_DIR/RouterQuota.xcodeproj"
-DERIVED_DATA="$ROOT_DIR/.build/RouterQuotaReleaseDerivedData"
-BUILD_APP="$DERIVED_DATA/Build/Products/Release/RouterQuota.app"
+PROJECT="$ROOT_DIR/Bigroute.xcodeproj"
+DERIVED_DATA="$ROOT_DIR/.build/BigrouteReleaseDerivedData"
+BUILD_APP="$DERIVED_DATA/Build/Products/Release/Bigroute.app"
 DIST_DIR="$ROOT_DIR/dist"
-DIST_APP="$DIST_DIR/Router Quota.app"
-ZIP_PATH="$DIST_DIR/Router-Quota-$VERSION.zip"
-DMG_PATH="$DIST_DIR/Router-Quota-$VERSION.dmg"
+DIST_APP="$DIST_DIR/Bigroute.app"
+ZIP_PATH="$DIST_DIR/Bigroute-$VERSION.zip"
+DMG_PATH="$DIST_DIR/Bigroute-$VERSION.dmg"
 
 if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
   echo "VERSION must be a stable semantic version such as 1.0.0." >&2
@@ -93,7 +93,7 @@ fi
 
 xcodebuild \
   -project "$PROJECT" \
-  -scheme RouterQuota \
+  -scheme Bigroute \
   -configuration Release \
   -destination 'generic/platform=macOS' \
   -derivedDataPath "$DERIVED_DATA" \
@@ -115,11 +115,11 @@ rm -f "$ZIP_PATH" "$DMG_PATH"
 ditto "$BUILD_APP" "$DIST_APP"
 
 APP_INFO="$DIST_APP/Contents/Info.plist"
-WIDGET="$DIST_APP/Contents/PlugIns/RouterQuotaWidget.appex"
+WIDGET="$DIST_APP/Contents/PlugIns/BigrouteWidget.appex"
 WIDGET_INFO="$WIDGET/Contents/Info.plist"
 SPARKLE_FRAMEWORK="$DIST_APP/Contents/Frameworks/Sparkle.framework"
 if [[ ! -d "$WIDGET" ]]; then
-  echo "The app does not contain the RouterQuotaWidget extension." >&2
+  echo "The app does not contain the BigrouteWidget extension." >&2
   exit 1
 fi
 if [[ ! -d "$SPARKLE_FRAMEWORK" ]]; then
@@ -132,17 +132,17 @@ for info_plist in "$APP_INFO" "$WIDGET_INFO"; do
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$info_plist"
 done
 /usr/libexec/PlistBuddy \
-  -c 'Set :SUFeedURL https://github.com/tufw95/router-quota/releases/download/stable-channel/appcast.xml' \
+  -c 'Set :SUFeedURL https://github.com/tufw95/bigroute/releases/download/stable-channel/appcast.xml' \
   "$APP_INFO"
 
 cp "$APP_PROFILE" "$DIST_APP/Contents/embedded.provisionprofile"
 cp "$WIDGET_PROFILE" "$WIDGET/Contents/embedded.provisionprofile"
 
 entitlements_dir="$(mktemp -d)"
-app_entitlements="$entitlements_dir/RouterQuota.entitlements"
-widget_entitlements="$entitlements_dir/RouterQuotaWidget.entitlements"
-cp "$ROOT_DIR/Config/RouterQuota/RouterQuota.entitlements" "$app_entitlements"
-cp "$ROOT_DIR/Config/RouterQuota/RouterQuotaWidget.entitlements" "$widget_entitlements"
+app_entitlements="$entitlements_dir/Bigroute.entitlements"
+widget_entitlements="$entitlements_dir/BigrouteWidget.entitlements"
+cp "$ROOT_DIR/Config/Bigroute/Bigroute.entitlements" "$app_entitlements"
+cp "$ROOT_DIR/Config/Bigroute/BigrouteWidget.entitlements" "$widget_entitlements"
 
 # Xcode normally injects these provisioning-backed identifiers into its
 # generated .xcent files. This pipeline signs manually, so add them explicitly.
@@ -205,10 +205,10 @@ codesign --force --options runtime --timestamp \
   "$DIST_APP"
 
 codesign --verify --deep --strict --verbose=2 "$DIST_APP"
-lipo "$DIST_APP/Contents/MacOS/RouterQuota" -verify_arch arm64
-lipo "$DIST_APP/Contents/MacOS/RouterQuota" -verify_arch x86_64
-lipo "$WIDGET/Contents/MacOS/RouterQuotaWidget" -verify_arch arm64
-lipo "$WIDGET/Contents/MacOS/RouterQuotaWidget" -verify_arch x86_64
+lipo "$DIST_APP/Contents/MacOS/Bigroute" -verify_arch arm64
+lipo "$DIST_APP/Contents/MacOS/Bigroute" -verify_arch x86_64
+lipo "$WIDGET/Contents/MacOS/BigrouteWidget" -verify_arch arm64
+lipo "$WIDGET/Contents/MacOS/BigrouteWidget" -verify_arch x86_64
 
 validate_signed_entitlements() {
   local bundle="$1"
@@ -258,10 +258,10 @@ fi
 ditto -c -k --sequesterRsrc --keepParent "$DIST_APP" "$ZIP_PATH"
 
 dmg_stage="$(mktemp -d)"
-ditto "$DIST_APP" "$dmg_stage/Router Quota.app"
+ditto "$DIST_APP" "$dmg_stage/Bigroute.app"
 ln -s /Applications "$dmg_stage/Applications"
 hdiutil create \
-  -volname "Router Quota" \
+  -volname "Bigroute" \
   -srcfolder "$dmg_stage" \
   -format UDZO \
   -ov \

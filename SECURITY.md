@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security fixes are provided for the latest published Router Quota release.
+Security fixes are provided for the latest published Bigroute release.
 
 ## Report a Vulnerability
 
@@ -18,6 +18,8 @@ Include the affected version, macOS version, reproduction steps, expected impact
 
 ## Credential Safety
 
-Router Quota stores provider API keys in macOS Keychain. Widget snapshots contain quota display data but never API keys. Release signing certificates, provisioning profiles, notarization passwords, and the Sparkle EdDSA private key must remain in protected GitHub Actions secrets and must never be committed.
+Bigroute stores provider API keys in macOS Keychain. Widget snapshots contain quota display data but never API keys. Release signing certificates, provisioning profiles, notarization passwords, and the Sparkle EdDSA private key must remain in protected GitHub Actions secrets and must never be committed.
 
-Office releases use a pinned, persistent self-signed code-signing certificate and are not Apple notarized. Their update ZIP and dedicated office appcast are authenticated with the embedded Sparkle Ed25519 public key. Users must download the first installer only from this repository and verify that subsequent updates are presented by Router Quota itself.
+Office releases use a pinned, persistent self-signed code-signing certificate and are not Apple notarized. Their update ZIP and dedicated office appcast are authenticated with the embedded Sparkle Ed25519 public key. Users must download the first installer only from this repository and verify that subsequent updates are presented by Bigroute itself.
+
+The legacy `com.routerquota.*` bundle IDs, `group.com.routerquota.shared` App Group, Keychain service, Sparkle public key, and `Router Quota Office Signing` certificate name are compatibility identifiers. They must not be globally renamed or replaced during a product rebrand because existing installations rely on them for trusted OTA updates and credential continuity.

@@ -19,7 +19,10 @@ jobs:
     environment: office-release
     env:
       DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      APP_BUNDLE_ID: com.routerquota.app
+      WIDGET_BUNDLE_ID: com.routerquota.app.widget
       OFFICE_SIGNING_CERT_SHA1: AED61665255B3E8DBD914C8C65A401B7B8902FD8
+      SPARKLE_PUBLIC_KEY: M3PQhg/ygRWtEttOkX73X9GXG4LXfCwMDNr/aUoxUMQ=
 
     steps:
       - name: Checkout
@@ -82,10 +85,10 @@ jobs:
             fi
           done
 
-          certificate_path="$RUNNER_TEMP/router-quota-office-signing.p12"
-          certificate_pem_path="$RUNNER_TEMP/router-quota-office-signing.pem"
+          certificate_path="$RUNNER_TEMP/bigroute-office-signing.p12"
+          certificate_pem_path="$RUNNER_TEMP/bigroute-office-signing.pem"
           sparkle_key_path="$RUNNER_TEMP/sparkle-ed25519-private-key"
-          keychain_path="$RUNNER_TEMP/router-quota-office-signing.keychain-db"
+          keychain_path="$RUNNER_TEMP/bigroute-office-signing.keychain-db"
           keychain_password="$(openssl rand -hex 32)"
 
           printf '%s' "$OFFICE_SIGNING_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
@@ -101,6 +104,7 @@ jobs:
             -t cert \
             -f pkcs12 \
             -k "$keychain_path" >/dev/null
+          # The certificate name is a legacy OTA trust anchor; keep it unchanged.
           security find-certificate \
             -c "Router Quota Office Signing" \
             -p "$keychain_path" > "$certificate_pem_path"
@@ -132,7 +136,7 @@ jobs:
             exit 1
           fi
 
-          preflight_binary="$RUNNER_TEMP/router-quota-codesign-preflight"
+          preflight_binary="$RUNNER_TEMP/bigroute-codesign-preflight"
           cp /usr/bin/true "$preflight_binary"
           codesign \
             --force \
@@ -171,27 +175,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          app="dist/Router Quota.app"
-          widget="$app/Contents/PlugIns/RouterQuotaWidget.appex"
-          dmg="dist/Router-Quota-$VERSION.dmg"
-          zip="dist/Router-Quota-$VERSION.zip"
+          app="dist/Bigroute.app"
+          widget="$app/Contents/PlugIns/BigrouteWidget.appex"
+          dmg="dist/Bigroute-$VERSION.dmg"
+          zip="dist/Bigroute-$VERSION.zip"
           appcast="dist/appcast.xml"
 
           test -s "$dmg"
           test -s "$zip"
           test -s "$appcast"
           codesign --verify --deep --strict --verbose=2 "$app"
-          lipo "$app/Contents/MacOS/RouterQuota" -verify_arch arm64
-          lipo "$app/Contents/MacOS/RouterQuota" -verify_arch x86_64
-          lipo "$widget/Contents/MacOS/RouterQuotaWidget" -verify_arch arm64
-          lipo "$widget/Contents/MacOS/RouterQuotaWidget" -verify_arch x86_64
+          lipo "$app/Contents/MacOS/Bigroute" -verify_arch arm64
+          lipo "$app/Contents/MacOS/Bigroute" -verify_arch x86_64
+          lipo "$widget/Contents/MacOS/BigrouteWidget" -verify_arch arm64
+          lipo "$widget/Contents/MacOS/BigrouteWidget" -verify_arch x86_64
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$VERSION"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "com.routerquota.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$app/Contents/Info.plist")" = "Bigroute"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "$APP_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$widget/Contents/Info.plist")" = "$WIDGET_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")" = "$SPARKLE_PUBLIC_KEY"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app/Contents/Info.plist")" \
             = "https://github.com/${{ github.repository }}/releases/download/office-channel/appcast.xml"
           grep -Eq '<enclosure[^>]+sparkle:edSignature=' "$appcast"
           grep -q 'sparkle-signatures:' "$appcast"
-          grep -q "Router-Quota-$VERSION.zip" "$appcast"
+          grep -q "Bigroute-$VERSION.zip" "$appcast"
 
           requirement="$(codesign -d -r- "$app" 2>&1 | sed -n 's/^designated => //p')"
           expected="$(printf '%s' "$OFFICE_SIGNING_CERT_SHA1" | tr '[:upper:]' '[:lower:]')"
@@ -219,16 +226,18 @@ jobs:
 
           This build is distributed for internal office use and is authenticated by a Sparkle Ed25519 signature.
 
-          It uses a persistent internal code-signing certificate and is not Apple notarized. The first installation may require **Privacy & Security > Open Anyway**. Once installed, later office releases update automatically through Router Quota.
+          It uses a persistent internal code-signing certificate and is not Apple notarized. The first installation may require **Privacy & Security > Open Anyway**. Once installed, later office releases update automatically through Bigroute.
+
+          Existing Router Quota 1.0.2 users should update from inside the app. For a manual upgrade, quit Router Quota and remove `/Applications/Router Quota.app` before installing Bigroute so macOS does not retain two widgets with the same compatibility identifier.
           NOTES
 
           gh release create "$TAG" \
             --verify-tag \
             --target "$GITHUB_SHA" \
-            --title "Router Quota $VERSION Office" \
+            --title "Bigroute $VERSION Office" \
             --notes-file "$notes_path" \
-            "dist/Router-Quota-$VERSION.dmg" \
-            "dist/Router-Quota-$VERSION.zip" \
+            "dist/Bigroute-$VERSION.dmg" \
+            "dist/Bigroute-$VERSION.zip" \
             "dist/appcast.xml"
 
       - name: Update office channel feed
@@ -238,12 +247,18 @@ jobs:
         run: |
           set -euo pipefail
           channel_tag="office-channel"
+          channel_title="Bigroute Office Update Channel"
+          channel_notes="Signed Sparkle feed for installed office builds. Download installers from the latest numbered office release."
           if ! gh release view "$channel_tag" >/dev/null 2>&1; then
             gh release create "$channel_tag" \
               --target "$GITHUB_SHA" \
               --prerelease \
-              --title "Router Quota Office Update Channel" \
-              --notes "Signed Sparkle feed for installed office builds. Download installers from the latest numbered office release."
+              --title "$channel_title" \
+              --notes "$channel_notes"
+          else
+            gh release edit "$channel_tag" \
+              --title "$channel_title" \
+              --notes "$channel_notes"
           fi
           gh release upload "$channel_tag" dist/appcast.xml --clobber
 

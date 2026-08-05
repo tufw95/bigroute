@@ -1,6 +1,7 @@
 #if SWIFT_PACKAGE
-import RouterQuotaCore
+import BigrouteCore
 #endif
+import AppKit
 import AppIntents
 import OSLog
 import SwiftUI
@@ -51,28 +52,28 @@ struct ProviderWidgetIntent: WidgetConfigurationIntent {
     var provider: ProviderWidgetEntity?
 }
 
-struct RouterQuotaEntry: TimelineEntry {
+struct BigrouteEntry: TimelineEntry {
     let date: Date
-    let snapshot: RouterQuotaSnapshot
+    let snapshot: BigrouteSnapshot
     let providerID: UUID?
 }
 
-struct RouterQuotaTimelineProvider: AppIntentTimelineProvider {
+struct BigrouteTimelineProvider: AppIntentTimelineProvider {
     private let store = SharedQuotaStore()
 
-    func placeholder(in context: Context) -> RouterQuotaEntry {
-        RouterQuotaEntry(
+    func placeholder(in context: Context) -> BigrouteEntry {
+        BigrouteEntry(
             date: Date(),
             snapshot: .preview,
-            providerID: RouterQuotaSnapshot.preview.providers.first?.id
+            providerID: BigrouteSnapshot.preview.providers.first?.id
         )
     }
 
-    func snapshot(for configuration: ProviderWidgetIntent, in context: Context) async -> RouterQuotaEntry {
+    func snapshot(for configuration: ProviderWidgetIntent, in context: Context) async -> BigrouteEntry {
         entry(configuration: configuration)
     }
 
-    func timeline(for configuration: ProviderWidgetIntent, in context: Context) async -> Timeline<RouterQuotaEntry> {
+    func timeline(for configuration: ProviderWidgetIntent, in context: Context) async -> Timeline<BigrouteEntry> {
         let now = Date()
         let currentEntry = entry(configuration: configuration, date: now)
         widgetTimelineLogger.info(
@@ -87,27 +88,27 @@ struct RouterQuotaTimelineProvider: AppIntentTimelineProvider {
     private func entry(
         configuration: ProviderWidgetIntent,
         date: Date = Date()
-    ) -> RouterQuotaEntry {
-        let snapshot: RouterQuotaSnapshot
+    ) -> BigrouteEntry {
+        let snapshot: BigrouteSnapshot
         if let storedSnapshot = store.load() {
             snapshot = storedSnapshot
             widgetTimelineLogger.info(
                 "Read snapshot generated at \(snapshot.generatedAt.timeIntervalSince1970, privacy: .public) from \(store.fileURL.path, privacy: .public)"
             )
         } else {
-            snapshot = RouterQuotaSnapshot(providers: [])
+            snapshot = BigrouteSnapshot(providers: [])
             widgetTimelineLogger.error("Could not read snapshot from \(store.fileURL.path, privacy: .public)")
         }
         let configuredID = configuration.provider.flatMap { UUID(uuidString: $0.id) }
         let providerID = configuredID.flatMap { snapshot.provider(id: $0)?.id }
             ?? snapshot.providers.first?.id
-        return RouterQuotaEntry(date: date, snapshot: snapshot, providerID: providerID)
+        return BigrouteEntry(date: date, snapshot: snapshot, providerID: providerID)
     }
 }
 
-private extension RouterQuotaSnapshot {
+private extension BigrouteSnapshot {
     static let previewProviderID = UUID(uuidString: "468BFBD1-2FE1-4306-9CB8-6F9A48F10B89")!
-    static let preview = RouterQuotaSnapshot(providers: [
+    static let preview = BigrouteSnapshot(providers: [
         ProviderQuotaSnapshot(
             id: previewProviderID,
             name: "My Router",
@@ -144,7 +145,7 @@ private extension RouterQuotaSnapshot {
 }
 
 struct ProviderWidgetView: View {
-    let entry: RouterQuotaEntry
+    let entry: BigrouteEntry
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
@@ -164,7 +165,7 @@ struct ProviderWidgetView: View {
                         .lineLimit(1)
                 }
             } else {
-                Text("Open Router Quota to add or refresh a provider.")
+                Text("Open Bigroute to add or refresh a provider.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
@@ -176,10 +177,9 @@ struct ProviderWidgetView: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 6) {
-            Image(systemName: "gauge.with.dots.needle.50percent")
-                .symbolRenderingMode(.hierarchical)
+            BigrouteMark(size: 16)
             VStack(alignment: .leading, spacing: 1) {
-                Text(provider?.name ?? "Router Quota")
+                Text(provider?.name ?? "Bigroute")
                     .font(.headline)
                     .lineLimit(1)
                 if let provider {
@@ -196,7 +196,7 @@ struct ProviderWidgetView: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
-            Link(destination: URL(string: "routerquota://refresh")!) {
+            Link(destination: URL(string: "bigroute://refresh")!) {
                 Image(systemName: "arrow.clockwise")
             }
             .font(.caption)
@@ -239,8 +239,8 @@ struct ProviderWidgetView: View {
     }
 
     private var widgetURL: URL? {
-        guard let id = provider?.id else { return URL(string: "routerquota://settings") }
-        return URL(string: "routerquota://provider/\(id.uuidString)")
+        guard let id = provider?.id else { return URL(string: "bigroute://settings") }
+        return URL(string: "bigroute://provider/\(id.uuidString)")
     }
 
     private func providerStatus(_ provider: ProviderQuotaSnapshot) -> Text {
@@ -249,6 +249,25 @@ struct ProviderWidgetView: View {
             : "\(accounts.count) accounts"
         guard let updatedAt = provider.updatedAt else { return Text("\(count) · Not updated yet") }
         return Text("\(count) · Updated ") + Text(updatedAt, style: .relative)
+    }
+}
+
+private struct BigrouteMark: View {
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let markURL = Bundle.main.url(forResource: "BigrouteMark", withExtension: "svg"),
+               let image = NSImage(contentsOf: markURL) {
+                Image(nsImage: image)
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+            }
+        }
+        .frame(width: size, height: size)
+        .foregroundStyle(.primary)
+        .accessibilityHidden(true)
     }
 }
 
@@ -301,24 +320,24 @@ private struct WidgetAccountRow: View {
 }
 
 @main
-struct RouterQuotaWidgetBundle: WidgetBundle {
+struct BigrouteWidgetBundle: WidgetBundle {
     var body: some Widget {
-        RouterQuotaWidget()
+        BigrouteWidget()
     }
 }
 
-struct RouterQuotaWidget: Widget {
+struct BigrouteWidget: Widget {
     let kind = "CustomProviderQuotaWidget"
 
     var body: some WidgetConfiguration {
         AppIntentConfiguration(
             kind: kind,
             intent: ProviderWidgetIntent.self,
-            provider: RouterQuotaTimelineProvider()
+            provider: BigrouteTimelineProvider()
         ) { entry in
             ProviderWidgetView(entry: entry)
         }
-        .configurationDisplayName("Router Quota")
+        .configurationDisplayName("Bigroute")
         .description("Track quota for any configured provider.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
     }

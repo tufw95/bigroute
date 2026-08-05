@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import OSLog
 #if SWIFT_PACKAGE
-import RouterQuotaCore
+import BigrouteCore
 #endif
 #if canImport(WidgetKit)
 import WidgetKit
@@ -18,8 +18,8 @@ final class QuotaMonitor {
         category: "WidgetSync"
     )
 
-    var configuration: RouterQuotaConfiguration
-    var snapshot: RouterQuotaSnapshot
+    var configuration: BigrouteConfiguration
+    var snapshot: BigrouteSnapshot
     var selectedProviderID: UUID?
     var isRefreshing = false
     var errorMessage: String?
@@ -34,7 +34,7 @@ final class QuotaMonitor {
         configuration = credentialStore.load()
         snapshot = snapshotStore.load()
             ?? snapshotStore.loadLegacySnapshot()
-            ?? RouterQuotaSnapshot(providers: [])
+            ?? BigrouteSnapshot(providers: [])
         if snapshot.sortOrder != configuration.sortOrder {
             snapshot = snapshot.withSortOrder(configuration.sortOrder)
             try? snapshotStore.save(snapshot)
@@ -140,7 +140,7 @@ final class QuotaMonitor {
                 )
             }
 
-            snapshot = RouterQuotaSnapshot(
+            snapshot = BigrouteSnapshot(
                 providers: snapshots,
                 generatedAt: now,
                 sortOrder: configuration.sortOrder
@@ -216,7 +216,7 @@ final class QuotaMonitor {
         #endif
     }
 
-    private func validate(_ configuration: RouterQuotaConfiguration) throws {
+    private func validate(_ configuration: BigrouteConfiguration) throws {
         for provider in configuration.providers {
             guard !provider.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw ConfigurationError("Provider name cannot be empty.")

@@ -27,7 +27,7 @@ public struct ProviderQuotaSnapshot: Codable, Equatable, Identifiable, Sendable 
     }
 }
 
-public struct RouterQuotaSnapshot: Codable, Equatable, Sendable {
+public struct BigrouteSnapshot: Codable, Equatable, Sendable {
     public let providers: [ProviderQuotaSnapshot]
     public let generatedAt: Date
     public let sortOrder: AccountSortOrder
@@ -77,8 +77,8 @@ public struct RouterQuotaSnapshot: Codable, Equatable, Sendable {
         provider(id: providerID)?.accounts ?? []
     }
 
-    public func withSortOrder(_ sortOrder: AccountSortOrder) -> RouterQuotaSnapshot {
-        RouterQuotaSnapshot(providers: providers, generatedAt: generatedAt, sortOrder: sortOrder)
+    public func withSortOrder(_ sortOrder: AccountSortOrder) -> BigrouteSnapshot {
+        BigrouteSnapshot(providers: providers, generatedAt: generatedAt, sortOrder: sortOrder)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -139,14 +139,19 @@ public struct RouterQuotaSnapshot: Codable, Equatable, Sendable {
 /// Credentials never cross this boundary.
 public struct SharedQuotaStore: Sendable {
     public let fileURL: URL
+    private let legacyFileURL: URL?
 
-    public init(fileURL: URL? = nil) {
+    public init(fileURL: URL? = nil, legacyFileURL: URL? = nil) {
         if let fileURL {
             self.fileURL = fileURL
+            self.legacyFileURL = legacyFileURL
         } else if Self.hasDevelopmentTeam, let groupURL = Self.availableGroupContainer() {
             self.fileURL = groupURL.appendingPathComponent("quota-snapshot.json")
+            self.legacyFileURL = nil
         } else {
-            self.fileURL = URL(fileURLWithPath: "/Users/Shared/RouterQuota", isDirectory: true)
+            self.fileURL = URL(fileURLWithPath: "/Users/Shared/Bigroute", isDirectory: true)
+                .appendingPathComponent("quota-snapshot.json")
+            self.legacyFileURL = URL(fileURLWithPath: "/Users/Shared/RouterQuota", isDirectory: true)
                 .appendingPathComponent("quota-snapshot.json")
         }
     }
@@ -174,14 +179,21 @@ public struct SharedQuotaStore: Sendable {
         }
     }
 
-    public func load() -> RouterQuotaSnapshot? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(RouterQuotaSnapshot.self, from: data)
+    public func load() -> BigrouteSnapshot? {
+        let snapshots = [fileURL, legacyFileURL]
+            .compactMap { $0 }
+            .compactMap(Self.decodeSnapshot(at:))
+        return snapshots.max { $0.generatedAt < $1.generatedAt }
     }
 
-    public func loadLegacySnapshot() -> RouterQuotaSnapshot? {
+    private static func decodeSnapshot(at url: URL) -> BigrouteSnapshot? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(BigrouteSnapshot.self, from: data)
+    }
+
+    public func loadLegacySnapshot() -> BigrouteSnapshot? {
         struct Legacy: Decodable {
             let accounts: [CodexQuotaAccount]
             let savedAt: Date
@@ -207,19 +219,30 @@ public struct SharedQuotaStore: Sendable {
             )
         }
         guard !providers.isEmpty else { return nil }
-        return RouterQuotaSnapshot(
+        return BigrouteSnapshot(
             providers: providers,
             generatedAt: providers.compactMap(\.updatedAt).max() ?? Date()
         )
     }
 
-    public func save(_ snapshot: RouterQuotaSnapshot) throws {
-        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    public func save(_ snapshot: BigrouteSnapshot) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        try encoder.encode(snapshot).write(to: fileURL, options: .atomic)
-        let permissions: NSNumber = fileURL.path.hasPrefix("/Users/Shared/") ? 0o644 : 0o600
-        try? FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: fileURL.path)
+        let data = try encoder.encode(snapshot)
+        try Self.write(data, to: fileURL)
+
+        // Keep the old office path current during the rename transition so
+        // older app/widget builds can still read the latest sanitized data.
+        if let legacyFileURL, legacyFileURL.standardizedFileURL != fileURL.standardizedFileURL {
+            try? Self.write(data, to: legacyFileURL)
+        }
+    }
+
+    private static func write(_ data: Data, to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
+        let permissions: NSNumber = url.path.hasPrefix("/Users/Shared/") ? 0o644 : 0o600
+        try? FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: url.path)
     }
 }

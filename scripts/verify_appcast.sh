@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_PATH="${APP_PATH:-$ROOT_DIR/dist/Router Quota.app}"
+APP_PATH="${APP_PATH:-$ROOT_DIR/dist/Bigroute.app}"
 APPCAST_PATH="${APPCAST_PATH:-$ROOT_DIR/dist/appcast.xml}"
 ZIP_PATH="${ZIP_PATH:?Set ZIP_PATH to the Sparkle update ZIP.}"
 SPARKLE_SIGN_UPDATE_PATH="${SPARKLE_SIGN_UPDATE_PATH:?Set SPARKLE_SIGN_UPDATE_PATH.}"

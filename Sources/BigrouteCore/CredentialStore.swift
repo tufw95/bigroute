@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-public struct RouterQuotaConfiguration: Equatable, Sendable {
+public struct BigrouteConfiguration: Equatable, Sendable {
     public var providers: [CustomQuotaProvider]
     public var refreshIntervalMinutes: Int
     public var sortOrder: AccountSortOrder
@@ -16,7 +16,7 @@ public struct RouterQuotaConfiguration: Equatable, Sendable {
         self.sortOrder = sortOrder
     }
 
-    public static let defaults = RouterQuotaConfiguration()
+    public static let defaults = BigrouteConfiguration()
 }
 
 /// Stores provider metadata in UserDefaults and API keys in the Keychain.
@@ -53,9 +53,9 @@ public struct CredentialStore: @unchecked Sendable {
             .appendingPathComponent(".codex/.env")
     }
 
-    public func load() -> RouterQuotaConfiguration {
+    public func load() -> BigrouteConfiguration {
         if let persisted = loadPersisted() {
-            return RouterQuotaConfiguration(
+            return BigrouteConfiguration(
                 providers: persisted.providers.map { provider in
                     CustomQuotaProvider(
                         id: provider.id,
@@ -78,7 +78,7 @@ public struct CredentialStore: @unchecked Sendable {
         return migrated
     }
 
-    public func save(_ configuration: RouterQuotaConfiguration) throws {
+    public func save(_ configuration: BigrouteConfiguration) throws {
         let previousProviderIDs = Set(loadPersisted()?.providers.map(\.id) ?? [])
         let providers = configuration.providers.map {
             PersistedProvider(
@@ -119,7 +119,7 @@ public struct CredentialStore: @unchecked Sendable {
         return try? JSONDecoder().decode(PersistedSettings.self, from: data)
     }
 
-    private func migrateLegacy() -> RouterQuotaConfiguration {
+    private func migrateLegacy() -> BigrouteConfiguration {
         let legacySuite = UserDefaults(suiteName: "vn.bigroll.codex-model-switcher")
         var nineURL = defaults.string(forKey: "routerTargetURL.nineRouter")
             ?? defaults.string(forKey: "routerTargetURL")
@@ -169,7 +169,7 @@ public struct CredentialStore: @unchecked Sendable {
                 apiKind: .omniRouter
             ))
         }
-        return RouterQuotaConfiguration(
+        return BigrouteConfiguration(
             providers: providers,
             refreshIntervalMinutes: refresh,
             sortOrder: .quotaDescending

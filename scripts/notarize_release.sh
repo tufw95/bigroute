@@ -9,9 +9,9 @@ APPLE_APP_PASSWORD="${APPLE_APP_PASSWORD:?Set APPLE_APP_PASSWORD.}"
 SIGN_IDENTITY="${SIGN_IDENTITY:?Set SIGN_IDENTITY.}"
 
 DIST_DIR="$ROOT_DIR/dist"
-APP_PATH="$DIST_DIR/Router Quota.app"
-ZIP_PATH="$DIST_DIR/Router-Quota-$VERSION.zip"
-DMG_PATH="$DIST_DIR/Router-Quota-$VERSION.dmg"
+APP_PATH="$DIST_DIR/Bigroute.app"
+ZIP_PATH="$DIST_DIR/Bigroute-$VERSION.zip"
+DMG_PATH="$DIST_DIR/Bigroute-$VERSION.dmg"
 
 if [[ "$SIGN_IDENTITY" != Developer\ ID\ Application:* ]]; then
   echo "Notarized releases require a Developer ID Application identity." >&2
@@ -38,10 +38,10 @@ rm -f "$ZIP_PATH" "$DMG_PATH"
 ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
 
 dmg_stage="$(mktemp -d)"
-ditto "$APP_PATH" "$dmg_stage/Router Quota.app"
+ditto "$APP_PATH" "$dmg_stage/Bigroute.app"
 ln -s /Applications "$dmg_stage/Applications"
 hdiutil create \
-  -volname "Router Quota" \
+  -volname "Bigroute" \
   -srcfolder "$dmg_stage" \
   -format UDZO \
   -ov \

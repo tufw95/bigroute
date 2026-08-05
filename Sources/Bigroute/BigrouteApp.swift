@@ -3,12 +3,12 @@ import AppKit
 import ServiceManagement
 #endif
 #if SWIFT_PACKAGE
-import RouterQuotaCore
+import BigrouteCore
 #endif
 import SwiftUI
 
 @main
-struct RouterQuotaApp: App {
+struct BigrouteApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
@@ -58,7 +58,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first, url.scheme == "routerquota" else { return }
+        guard let url = urls.first,
+              let scheme = url.scheme?.lowercased(),
+              scheme == "bigroute" || scheme == "routerquota" else { return }
         if url.host == "refresh" {
             monitor.refresh(force: true)
             showPopover()
@@ -81,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func installMenuBarItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.target = self
         item.button?.action = #selector(togglePopover)
 
@@ -102,9 +104,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateMenuBarIcon(updateAvailable: Bool) {
-        let symbol = updateAvailable ? "arrow.down.circle.fill" : "gauge.with.dots.needle.33percent"
-        let description = updateAvailable ? "Router Quota update available" : "Router Quota"
-        statusItem?.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
+        let description = updateAvailable ? "Bigroute update available" : "Bigroute"
+        guard let button = statusItem?.button,
+              let markURL = Bundle.main.url(forResource: "BigrouteMark", withExtension: "svg"),
+              let mark = NSImage(contentsOf: markURL) else { return }
+
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            mark.draw(in: NSRect(x: 0, y: 0, width: 17, height: 17))
+            if updateAvailable {
+                NSColor.black.setFill()
+                NSBezierPath(ovalIn: NSRect(x: 13, y: 13, width: 5, height: 5)).fill()
+            }
+            return true
+        }
+        image.isTemplate = true
+        button.image = image
+        button.toolTip = description
+        button.setAccessibilityLabel(description)
     }
 
     @objc private func togglePopover() {

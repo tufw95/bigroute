@@ -4,14 +4,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="${VERSION:?Set VERSION.}"
 TAG="${TAG:?Set TAG, for example v1.0.0.}"
-REPOSITORY="${REPOSITORY:?Set REPOSITORY, for example tufw95/router-quota.}"
+REPOSITORY="${REPOSITORY:?Set REPOSITORY, for example tufw95/bigroute.}"
 SPARKLE_PRIVATE_KEY_PATH="${SPARKLE_PRIVATE_KEY_PATH:?Set SPARKLE_PRIVATE_KEY_PATH.}"
 
 SPARKLE_VERSION="2.9.4"
 SPARKLE_SHA256="ce89daf967db1e1893ed3ebd67575ed82d3902563e3191ca92aaec9164fbdef9"
 SPARKLE_URL="https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
 DIST_DIR="$ROOT_DIR/dist"
-ZIP_NAME="Router-Quota-$VERSION.zip"
+ZIP_NAME="Bigroute-$VERSION.zip"
 ZIP_PATH="$DIST_DIR/$ZIP_NAME"
 APPCAST_PATH="$DIST_DIR/appcast.xml"
 
@@ -41,7 +41,7 @@ fi
 tar -xJf "$sparkle_archive" -C "$tools_dir"
 
 cp "$ZIP_PATH" "$archives_dir/$ZIP_NAME"
-notes_path="$archives_dir/Router-Quota-$VERSION.md"
+notes_path="$archives_dir/Bigroute-$VERSION.md"
 generation_log="$tools_dir/generate-appcast.log"
 awk -v heading="## [$VERSION]" '
   index($0, heading) == 1 { capture=1; next }

@@ -1,10 +1,19 @@
 # Changelog
 
-All notable changes to Router Quota are documented in this file.
+All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [1.1.0] - 2026-08-05
+
+### Changed
+
+- Rebranded the macOS app, widget, repository, documentation, build products, release artifacts, and update channels as Bigroute.
+- Replaced the application and menu-bar artwork with the new Bigroute icon.
+- Renamed the Xcode and SwiftPM projects, targets, modules, tests, and development scripts to match the new product name.
+- Preserved the existing bundle IDs, App Group, Keychain service, Sparkle public key, and office signing identity so Router Quota 1.0.2 installations can update without losing configuration or widget continuity.
 
 ## [1.0.2] - 2026-08-05
 
@@ -43,7 +52,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/router-quota/compare/office-v1.0.2...HEAD
-[1.0.2]: https://github.com/tufw95/router-quota/releases/tag/office-v1.0.2
-[1.0.1]: https://github.com/tufw95/router-quota/releases/tag/office-v1.0.1
-[1.0.0]: https://github.com/tufw95/router-quota/releases/tag/office-v1.0.0
+[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.1.0...HEAD
+[1.1.0]: https://github.com/tufw95/bigroute/releases/tag/office-v1.1.0
+[1.0.2]: https://github.com/tufw95/bigroute/releases/tag/office-v1.0.2
+[1.0.1]: https://github.com/tufw95/bigroute/releases/tag/office-v1.0.1
+[1.0.0]: https://github.com/tufw95/bigroute/releases/tag/office-v1.0.0

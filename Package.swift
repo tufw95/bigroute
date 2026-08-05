@@ -2,22 +2,22 @@
 import PackageDescription
 
 let package = Package(
-    name: "RouterQuota",
+    name: "Bigroute",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "RouterQuota", targets: ["RouterQuota"]),
-        .executable(name: "RouterQuotaWidget", targets: ["RouterQuotaWidget"]),
-        .library(name: "RouterQuotaCore", targets: ["RouterQuotaCore"])
+        .executable(name: "Bigroute", targets: ["Bigroute"]),
+        .executable(name: "BigrouteWidget", targets: ["BigrouteWidget"]),
+        .library(name: "BigrouteCore", targets: ["BigrouteCore"])
     ],
     dependencies: [
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4")
     ],
     targets: [
         .target(
-            name: "RouterQuotaCore",
-            path: "Sources/RouterQuotaCore",
+            name: "BigrouteCore",
+            path: "Sources/BigrouteCore",
             sources: [
                 "QuotaService.swift",
                 "RouterEndpoint.swift",
@@ -27,22 +27,22 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "RouterQuota",
+            name: "Bigroute",
             dependencies: [
-                "RouterQuotaCore",
+                "BigrouteCore",
                 .product(name: "Sparkle", package: "Sparkle")
             ],
-            path: "Sources/RouterQuota"
+            path: "Sources/Bigroute"
         ),
         .executableTarget(
-            name: "RouterQuotaWidget",
-            dependencies: ["RouterQuotaCore"],
-            path: "Sources/RouterQuotaWidget"
+            name: "BigrouteWidget",
+            dependencies: ["BigrouteCore"],
+            path: "Sources/BigrouteWidget"
         ),
         .testTarget(
-            name: "RouterQuotaCoreTests",
-            dependencies: ["RouterQuotaCore"],
-            path: "Tests/RouterQuotaCoreTests"
+            name: "BigrouteCoreTests",
+            dependencies: ["BigrouteCore"],
+            path: "Tests/BigrouteCoreTests"
         )
     ]
 )

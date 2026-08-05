@@ -9,13 +9,13 @@ OFFICE_SIGNING_KEYCHAIN_PATH="${OFFICE_SIGNING_KEYCHAIN_PATH:-}"
 OFFICE_SIGNING_CERT_SHA1="${OFFICE_SIGNING_CERT_SHA1:?Set OFFICE_SIGNING_CERT_SHA1.}"
 DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
-PROJECT="$ROOT_DIR/RouterQuota.xcodeproj"
-DERIVED_DATA="$ROOT_DIR/.build/RouterQuotaOfficeReleaseDerivedData"
-BUILD_APP="$DERIVED_DATA/Build/Products/Release/RouterQuota.app"
+PROJECT="$ROOT_DIR/Bigroute.xcodeproj"
+DERIVED_DATA="$ROOT_DIR/.build/BigrouteOfficeReleaseDerivedData"
+BUILD_APP="$DERIVED_DATA/Build/Products/Release/Bigroute.app"
 DIST_DIR="$ROOT_DIR/dist"
-DIST_APP="$DIST_DIR/Router Quota.app"
-ZIP_PATH="$DIST_DIR/Router-Quota-$VERSION.zip"
-DMG_PATH="$DIST_DIR/Router-Quota-$VERSION.dmg"
+DIST_APP="$DIST_DIR/Bigroute.app"
+ZIP_PATH="$DIST_DIR/Bigroute-$VERSION.zip"
+DMG_PATH="$DIST_DIR/Bigroute-$VERSION.dmg"
 
 if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
   echo "VERSION must be a stable semantic version such as 1.0.0." >&2
@@ -35,7 +35,7 @@ export DEVELOPER_DIR
 xcodebuild \
   -quiet \
   -project "$PROJECT" \
-  -scheme RouterQuota \
+  -scheme Bigroute \
   -configuration Release \
   -destination 'generic/platform=macOS' \
   -derivedDataPath "$DERIVED_DATA" \
@@ -57,7 +57,7 @@ rm -f "$ZIP_PATH" "$DMG_PATH"
 ditto "$BUILD_APP" "$DIST_APP"
 
 APP_INFO="$DIST_APP/Contents/Info.plist"
-WIDGET="$DIST_APP/Contents/PlugIns/RouterQuotaWidget.appex"
+WIDGET="$DIST_APP/Contents/PlugIns/BigrouteWidget.appex"
 WIDGET_INFO="$WIDGET/Contents/Info.plist"
 SPARKLE="$DIST_APP/Contents/Frameworks/Sparkle.framework"
 if [[ ! -d "$WIDGET" || ! -d "$SPARKLE" ]]; then
@@ -70,7 +70,7 @@ for info_plist in "$APP_INFO" "$WIDGET_INFO"; do
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$info_plist"
 done
 /usr/libexec/PlistBuddy \
-  -c 'Set :SUFeedURL https://github.com/tufw95/router-quota/releases/download/office-channel/appcast.xml' \
+  -c 'Set :SUFeedURL https://github.com/tufw95/bigroute/releases/download/office-channel/appcast.xml' \
   "$APP_INFO"
 
 # A persistent self-signed identity keeps Keychain ACLs stable across office
@@ -97,17 +97,17 @@ codesign "${codesign_args[@]}" \
   --preserve-metadata=identifier,entitlements,requirements \
   "$SPARKLE"
 codesign "${codesign_args[@]}" --generate-entitlement-der \
-  --entitlements "$ROOT_DIR/Config/RouterQuota/RouterQuotaWidget.entitlements" \
+  --entitlements "$ROOT_DIR/Config/Bigroute/BigrouteWidget.entitlements" \
   "$WIDGET"
 codesign "${codesign_args[@]}" --generate-entitlement-der \
-  --entitlements "$ROOT_DIR/Config/RouterQuota/RouterQuota.entitlements" \
+  --entitlements "$ROOT_DIR/Config/Bigroute/Bigroute.entitlements" \
   "$DIST_APP"
 
 codesign --verify --deep --strict --verbose=2 "$DIST_APP"
-lipo "$DIST_APP/Contents/MacOS/RouterQuota" -verify_arch arm64
-lipo "$DIST_APP/Contents/MacOS/RouterQuota" -verify_arch x86_64
-lipo "$WIDGET/Contents/MacOS/RouterQuotaWidget" -verify_arch arm64
-lipo "$WIDGET/Contents/MacOS/RouterQuotaWidget" -verify_arch x86_64
+lipo "$DIST_APP/Contents/MacOS/Bigroute" -verify_arch arm64
+lipo "$DIST_APP/Contents/MacOS/Bigroute" -verify_arch x86_64
+lipo "$WIDGET/Contents/MacOS/BigrouteWidget" -verify_arch arm64
+lipo "$WIDGET/Contents/MacOS/BigrouteWidget" -verify_arch x86_64
 
 expected_fingerprint="$(printf '%s' "$OFFICE_SIGNING_CERT_SHA1" | tr '[:upper:]' '[:lower:]')"
 designated_requirement="$(codesign -d -r- "$DIST_APP" 2>&1 | sed -n 's/^designated => //p')"
@@ -119,10 +119,10 @@ fi
 ditto -c -k --sequesterRsrc --keepParent "$DIST_APP" "$ZIP_PATH"
 
 dmg_stage="$(mktemp -d)"
-ditto "$DIST_APP" "$dmg_stage/Router Quota.app"
+ditto "$DIST_APP" "$dmg_stage/Bigroute.app"
 ln -s /Applications "$dmg_stage/Applications"
 hdiutil create \
-  -volname "Router Quota" \
+  -volname "Bigroute" \
   -srcfolder "$dmg_stage" \
   -format UDZO \
   -ov \

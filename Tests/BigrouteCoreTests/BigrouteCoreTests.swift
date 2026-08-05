@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import RouterQuotaCore
+@testable import BigrouteCore
 
 @Test func endpointConstruction() throws {
     let base = try #require(URL(string: "https://router.example.com/internal"))
@@ -101,7 +101,7 @@ import Testing
         quotas: [CodexQuotaWindow(key: "session", used: 25, total: 100, remaining: 75, resetAt: nil, unlimited: false)],
         resetCredits: .init(availableCount: 0), status: "valid", errorCode: nil
     )
-    let snapshot = RouterQuotaSnapshot(
+    let snapshot = BigrouteSnapshot(
         accounts: [account],
         generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
         sortOrder: .nameAscending
@@ -112,11 +112,38 @@ import Testing
     try? FileManager.default.removeItem(at: directory)
 }
 
+@Test func sharedSnapshotFallsBackToLegacyAndDualWrites() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let primaryURL = directory.appendingPathComponent("Bigroute/quota-snapshot.json")
+    let legacyURL = directory.appendingPathComponent("RouterQuota/quota-snapshot.json")
+    let store = SharedQuotaStore(fileURL: primaryURL, legacyFileURL: legacyURL)
+    let older = BigrouteSnapshot(providers: [], generatedAt: Date(timeIntervalSince1970: 100))
+    let newer = BigrouteSnapshot(providers: [], generatedAt: Date(timeIntervalSince1970: 200))
+    let latest = BigrouteSnapshot(providers: [], generatedAt: Date(timeIntervalSince1970: 300))
+
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    try FileManager.default.createDirectory(at: primaryURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: legacyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try encoder.encode(older).write(to: primaryURL)
+    try encoder.encode(newer).write(to: legacyURL)
+    #expect(store.load() == newer)
+
+    try Data("invalid snapshot".utf8).write(to: primaryURL)
+    #expect(store.load() == newer)
+
+    try store.save(latest)
+    #expect(FileManager.default.fileExists(atPath: primaryURL.path))
+    #expect(FileManager.default.fileExists(atPath: legacyURL.path))
+    #expect(store.load() == latest)
+    try? FileManager.default.removeItem(at: directory)
+}
+
 @Test func providerFilteringSeparatesSources() {
     let make: (String, String) -> CodexQuotaAccount = { id, provider in
         CodexQuotaAccount(id: id, provider: provider, label: id, plan: "", limitReached: false, quotas: [], resetCredits: .init(availableCount: 0), status: "valid", errorCode: nil)
     }
-    let snapshot = RouterQuotaSnapshot(accounts: [make("a", "9router"), make("b", "omni")])
+    let snapshot = BigrouteSnapshot(accounts: [make("a", "9router"), make("b", "omni")])
     #expect(snapshot.accounts(for: LegacyProviderID.nineRouter).map(\.id) == ["a"])
     #expect(snapshot.accounts(for: LegacyProviderID.omniRouter).map(\.id) == ["b"])
 }
@@ -145,7 +172,7 @@ import Testing
         id: UUID(), name: "Second", accounts: [],
         updatedAt: Date(timeIntervalSince1970: 50), lastError: "Offline"
     )
-    let snapshot = RouterQuotaSnapshot(providers: [first, second])
+    let snapshot = BigrouteSnapshot(providers: [first, second])
     #expect(snapshot.provider(id: first.id)?.updatedAt == first.updatedAt)
     #expect(snapshot.provider(id: second.id)?.lastError == "Offline")
 }
