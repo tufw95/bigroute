@@ -59,6 +59,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first, url.scheme == "routerquota" else { return }
+        if url.host == "refresh" {
+            monitor.refresh(force: true)
+            showPopover()
+            return
+        }
         if url.host == "settings" {
             popover?.performClose(nil)
             DispatchQueue.main.async {
@@ -83,12 +88,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = NSPopover()
         panel.behavior = .transient
         panel.animates = true
-        panel.contentSize = NSSize(width: 700, height: 790)
-        panel.contentViewController = NSHostingController(
+        let hostingController = NSHostingController(
             rootView: DashboardView()
                 .environment(monitor)
                 .environment(updateController)
         )
+        hostingController.sizingOptions = [.preferredContentSize]
+        panel.contentViewController = hostingController
 
         statusItem = item
         popover = panel

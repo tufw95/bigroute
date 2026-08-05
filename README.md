@@ -67,11 +67,11 @@ Open the app at least once before searching for the widget. If an older widget i
 
 ## Refresh Timing
 
-The menu bar app refreshes each provider at the interval selected in Settings, which is 2 minutes by default. It bypasses local HTTP caches and coalesces automatic WidgetKit reload requests to one every 5 minutes so macOS does not throttle the widget. A manual refresh requests an immediate reload.
+The menu bar app refreshes each provider at the interval selected in Settings, which is 2 minutes by default. It bypasses local HTTP caches and coalesces automatic WidgetKit reload requests to one every 5 minutes so macOS does not throttle the widget. A request received during that window is queued and delivered as soon as the window ends instead of being discarded. A manual app refresh requests an immediate reload.
 
-The widget also requests a fallback timeline every 15 minutes. macOS owns WidgetKit scheduling and may delay or combine refreshes to protect battery life. The widget header reports the age of the last successful provider result, for example `Updated 8 min ago`; it does not represent the quota reset time.
+The widget also requests a fallback timeline every 5 minutes. Its refresh button opens Router Quota, fetches the configured providers immediately, saves a new sanitized snapshot, and requests a widget redraw. macOS owns WidgetKit scheduling and may still delay or combine refreshes to protect battery life. The widget header reports the age of the last successful provider result, for example `Updated 8 min ago`; it does not represent the quota reset time.
 
-After upgrading from 1.0.0, remove and add the widget once if it still shows an old timeline. macOS can keep a previous WidgetKit extension process alive after a Sparkle update even though the menu-bar app is already current.
+After upgrading, remove and add the widget once if macOS keeps showing an old extension timeline. macOS can keep a previous WidgetKit extension process alive after a Sparkle update even though the menu-bar app is already current.
 
 Sparkle checks for app updates hourly and also supports **Check for Updates…** from the app. Office updates are read from the dedicated signed channel:
 

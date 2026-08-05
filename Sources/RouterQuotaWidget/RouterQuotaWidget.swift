@@ -2,8 +2,14 @@
 import RouterQuotaCore
 #endif
 import AppIntents
+import OSLog
 import SwiftUI
 import WidgetKit
+
+private let widgetTimelineLogger = Logger(
+    subsystem: "com.routerquota.app.widget",
+    category: "Timeline"
+)
 
 struct ProviderWidgetEntity: AppEntity {
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Quota Provider")
@@ -68,9 +74,13 @@ struct RouterQuotaTimelineProvider: AppIntentTimelineProvider {
 
     func timeline(for configuration: ProviderWidgetIntent, in context: Context) async -> Timeline<RouterQuotaEntry> {
         let now = Date()
+        let currentEntry = entry(configuration: configuration, date: now)
+        widgetTimelineLogger.info(
+            "Built timeline with \(currentEntry.snapshot.providers.count, privacy: .public) providers and \(currentEntry.snapshot.accounts.count, privacy: .public) accounts"
+        )
         return Timeline(
-            entries: [entry(configuration: configuration, date: now)],
-            policy: .after(now.addingTimeInterval(15 * 60))
+            entries: [currentEntry],
+            policy: .after(now.addingTimeInterval(5 * 60))
         )
     }
 
@@ -78,7 +88,16 @@ struct RouterQuotaTimelineProvider: AppIntentTimelineProvider {
         configuration: ProviderWidgetIntent,
         date: Date = Date()
     ) -> RouterQuotaEntry {
-        let snapshot = store.load() ?? RouterQuotaSnapshot(providers: [])
+        let snapshot: RouterQuotaSnapshot
+        if let storedSnapshot = store.load() {
+            snapshot = storedSnapshot
+            widgetTimelineLogger.info(
+                "Read snapshot generated at \(snapshot.generatedAt.timeIntervalSince1970, privacy: .public) from \(store.fileURL.path, privacy: .public)"
+            )
+        } else {
+            snapshot = RouterQuotaSnapshot(providers: [])
+            widgetTimelineLogger.error("Could not read snapshot from \(store.fileURL.path, privacy: .public)")
+        }
         let configuredID = configuration.provider.flatMap { UUID(uuidString: $0.id) }
         let providerID = configuredID.flatMap { snapshot.provider(id: $0)?.id }
             ?? snapshot.providers.first?.id
@@ -177,6 +196,11 @@ struct ProviderWidgetView: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
+            Link(destination: URL(string: "routerquota://refresh")!) {
+                Image(systemName: "arrow.clockwise")
+            }
+            .font(.caption)
+            .accessibilityLabel("Refresh quota")
         }
     }
 

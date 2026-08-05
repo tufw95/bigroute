@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 #if SWIFT_PACKAGE
 import RouterQuotaCore
 #endif
@@ -12,6 +13,10 @@ import WidgetKit
 final class QuotaMonitor {
     private static let widgetKind = "CustomProviderQuotaWidget"
     private static let automaticWidgetReloadInterval: TimeInterval = 5 * 60
+    private static let widgetLogger = Logger(
+        subsystem: "com.routerquota.app",
+        category: "WidgetSync"
+    )
 
     var configuration: RouterQuotaConfiguration
     var snapshot: RouterQuotaSnapshot
@@ -22,6 +27,7 @@ final class QuotaMonitor {
     private let credentialStore = CredentialStore()
     private let snapshotStore = SharedQuotaStore()
     private var timer: Timer?
+    private var pendingWidgetReloadTimer: Timer?
     private var lastWidgetReloadAt: Date?
 
     init() {
@@ -52,6 +58,8 @@ final class QuotaMonitor {
     func stop() {
         timer?.invalidate()
         timer = nil
+        pendingWidgetReloadTimer?.invalidate()
+        pendingWidgetReloadTimer = nil
     }
 
     func upsertProvider(_ provider: CustomQuotaProvider) {
@@ -137,21 +145,17 @@ final class QuotaMonitor {
                 generatedAt: now,
                 sortOrder: configuration.sortOrder
             )
-            let widgetContentChanged = previousSnapshot.sortOrder != snapshot.sortOrder
-                || snapshots.count != previousSnapshot.providers.count
-                || snapshots.contains { current in
-                    guard let previous = previousSnapshot.provider(id: current.id) else { return true }
-                    return previous.name != current.name
-                        || previous.accounts != current.accounts
-                        || previous.lastError != current.lastError
-                }
             do {
                 try snapshotStore.save(snapshot)
-                if force || widgetContentChanged || lastWidgetReloadAt == nil {
-                    reloadWidget(force: force)
-                }
+                Self.widgetLogger.info(
+                    "Saved widget snapshot with \(self.snapshot.providers.count, privacy: .public) providers and \(self.snapshot.accounts.count, privacy: .public) accounts"
+                )
+                // Freshness and reset countdowns are widget content too, even
+                // when the numeric quota values have not changed.
+                reloadWidget(force: force)
             } catch {
                 errorMessage = error.localizedDescription
+                Self.widgetLogger.error("Could not save widget snapshot: \(error.localizedDescription, privacy: .public)")
             }
 
             let errors = snapshots.compactMap(\.lastError)
@@ -171,13 +175,44 @@ final class QuotaMonitor {
     private func reloadWidget(force: Bool) {
         #if canImport(WidgetKit)
         let now = Date()
-        if !force,
-           let lastWidgetReloadAt,
-           now.timeIntervalSince(lastWidgetReloadAt) < Self.automaticWidgetReloadInterval {
+        if force {
+            pendingWidgetReloadTimer?.invalidate()
+            pendingWidgetReloadTimer = nil
+            performWidgetReload(at: now)
             return
         }
-        self.lastWidgetReloadAt = now
-        WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
+
+        guard let lastWidgetReloadAt else {
+            performWidgetReload(at: now)
+            return
+        }
+
+        let elapsed = now.timeIntervalSince(lastWidgetReloadAt)
+        guard elapsed < Self.automaticWidgetReloadInterval else {
+            pendingWidgetReloadTimer?.invalidate()
+            pendingWidgetReloadTimer = nil
+            performWidgetReload(at: now)
+            return
+        }
+
+        guard pendingWidgetReloadTimer == nil else { return }
+        let delay = Self.automaticWidgetReloadInterval - elapsed
+        pendingWidgetReloadTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.pendingWidgetReloadTimer = nil
+                self.performWidgetReload(at: Date())
+            }
+        }
+        Self.widgetLogger.info("Coalesced WidgetKit reload scheduled in \(delay, privacy: .public) seconds")
+        #endif
+    }
+
+    private func performWidgetReload(at date: Date) {
+        #if canImport(WidgetKit)
+        lastWidgetReloadAt = date
+        WidgetCenter.shared.reloadAllTimelines()
+        Self.widgetLogger.info("Requested WidgetKit reload for \(Self.widgetKind, privacy: .public)")
         #endif
     }
 

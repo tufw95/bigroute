@@ -8,6 +8,9 @@ struct DashboardView: View {
     @Environment(QuotaMonitor.self) private var monitor
     @Environment(UpdateController.self) private var updateController
 
+    private let contentWidth: CGFloat = 700
+    private let minimumHeight: CGFloat = 220
+    private let maximumHeight: CGFloat = 790
     private let columns = [
         GridItem(.flexible(), spacing: 7),
         GridItem(.flexible(), spacing: 7)
@@ -31,20 +34,50 @@ struct DashboardView: View {
                         : "Check the endpoint and API key in Settings.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 5) {
-                    ForEach(accounts) { account in
-                        QuotaAccountCard(account: account)
-                    }
+            } else if needsAccountScroll {
+                ScrollView {
+                    accountGrid
+                        .padding(.bottom, 8)
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 7)
+            } else {
+                accountGrid
                 Spacer(minLength: 8)
             }
             footer
         }
-        .frame(width: 700, height: 790)
+        .frame(width: contentWidth, height: preferredHeight)
         .background(.regularMaterial)
+        .animation(.snappy(duration: 0.2), value: preferredHeight)
+    }
+
+    private var accountGrid: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 5) {
+            ForEach(accounts) { account in
+                QuotaAccountCard(account: account)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 7)
+    }
+
+    private var preferredHeight: CGFloat {
+        guard !accounts.isEmpty else {
+            return monitor.enabledProviders.count > 1 ? 324 : 280
+        }
+        return min(maximumHeight, max(minimumHeight, naturalContentHeight))
+    }
+
+    private var needsAccountScroll: Bool {
+        naturalContentHeight > maximumHeight
+    }
+
+    private var naturalContentHeight: CGFloat {
+        let rowCount = CGFloat((accounts.count + columns.count - 1) / columns.count)
+        let rowGaps = CGFloat(max(0, Int(rowCount) - 1)) * 5
+        let gridHeight = 7 + (rowCount * 36) + rowGaps + 8
+        let providerPickerHeight: CGFloat = monitor.enabledProviders.count > 1 ? 44 : 0
+        let chromeHeight: CGFloat = 65 + 1 + providerPickerHeight + 38
+        return chromeHeight + gridHeight
     }
 
     private var currentProvider: CustomQuotaProvider? {
@@ -288,7 +321,7 @@ struct SettingsView: View {
                     value: $monitor.configuration.refreshIntervalMinutes,
                     in: 1...60
                 )
-                Text("The app refreshes widget data on the selected schedule and asks WidgetKit to redraw at most every 5 minutes. Refresh Now requests an immediate redraw, with a 15-minute WidgetKit fallback. macOS may still delay the exact timing.")
+                Text("The app refreshes widget data on the selected schedule and asks WidgetKit to redraw at most every 5 minutes. Requests inside that window are queued, Refresh Now asks for an immediate redraw, and the widget has a 5-minute fallback. macOS may still delay the exact timing.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack {

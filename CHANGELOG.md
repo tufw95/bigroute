@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-08-05
+
+### Added
+
+- Added a widget refresh button that asks the app to fetch providers immediately, plus unified-log telemetry that diagnoses timeline reads without exposing account data or credentials.
+
+### Fixed
+
+- Preserved WidgetKit reload requests that arrive during the five-minute throttle window instead of dropping them permanently.
+- Refreshed widget freshness and reset countdowns even when the numeric quota value has not changed.
+- Reduced the WidgetKit fallback timeline from fifteen minutes to five minutes.
+- Made the menu-bar popover resize to its two-column account content, with scrolling only for large account lists.
+
 ## [1.0.1] - 2026-08-01
 
 ### Fixed
@@ -30,6 +43,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/router-quota/compare/office-v1.0.1...HEAD
+[Unreleased]: https://github.com/tufw95/router-quota/compare/office-v1.0.2...HEAD
+[1.0.2]: https://github.com/tufw95/router-quota/releases/tag/office-v1.0.2
 [1.0.1]: https://github.com/tufw95/router-quota/releases/tag/office-v1.0.1
 [1.0.0]: https://github.com/tufw95/router-quota/releases/tag/office-v1.0.0
