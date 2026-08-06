@@ -12,7 +12,7 @@ Bigroute is a native macOS menu bar app and WidgetKit extension for monitoring a
 - Hide provider tabs when only one provider is configured.
 - Choose quota, account-name, or refresh-time sorting in either direction; the app and widget stay in sync.
 - Prefer provider-defined account names over email labels when the quota endpoint exposes them.
-- Show remaining quota with red (0–10%), yellow (11–50%), and green (51–100%) indicators, plus account state and time until quota refresh.
+- Show remaining quota with red (0–20%), yellow (21–70%), and green (71–100%) indicators, plus account state and time until quota refresh.
 - Refresh providers in parallel every 1–60 minutes; the default is 2 minutes.
 - Store API keys in macOS Keychain and share only sanitized quota snapshots with the widget.
 - Use native SwiftUI, AppKit, WidgetKit, App Intents, semantic colors, and macOS materials.
@@ -22,7 +22,7 @@ Bigroute is a native macOS menu bar app and WidgetKit extension for monitoring a
 
 Bigroute requires macOS 14 or later on Apple Silicon or Intel Macs.
 
-The current office build is available from [Bigroute 1.1.1 Office](https://github.com/tufw95/bigroute/releases/tag/office-v1.1.1):
+The current office build is available from [Bigroute 1.1.2 Office](https://github.com/tufw95/bigroute/releases/tag/office-v1.1.2):
 
 Existing Router Quota 1.0.2 users should use **Check for Updates…** for the cleanest in-place migration. For a manual upgrade, quit Router Quota and move `/Applications/Router Quota.app` to the Trash before copying Bigroute; keeping both bundles can make macOS load the older widget because they intentionally share compatibility identifiers.
 
@@ -116,8 +116,8 @@ Required repository secrets:
 Create an office release after CI passes on `main`:
 
 ```bash
-git tag office-v1.1.1
-git push origin office-v1.1.1
+git tag office-v1.1.2
+git push origin office-v1.1.2
 ```
 
 Existing office installations check the dedicated channel hourly and can also use **Check for Updates…** immediately. The legacy `com.routerquota.*` bundle IDs and App Group are intentionally retained for OTA, Keychain, and WidgetKit continuity even though all user-facing product and release names are Bigroute.

@@ -166,10 +166,10 @@ import Testing
 @Test func quotaIndicatorBandsMatchDisplayedPercentages() {
     #expect(QuotaIndicatorBand(remaining: nil) == .unavailable)
     #expect(QuotaIndicatorBand(remaining: .nan) == .unavailable)
-    #expect(QuotaIndicatorBand(remaining: 10.4) == .critical)
-    #expect(QuotaIndicatorBand(remaining: 10.5) == .warning)
-    #expect(QuotaIndicatorBand(remaining: 50.4) == .warning)
-    #expect(QuotaIndicatorBand(remaining: 50.5) == .healthy)
+    #expect(QuotaIndicatorBand(remaining: 20.4) == .critical)
+    #expect(QuotaIndicatorBand(remaining: 20.5) == .warning)
+    #expect(QuotaIndicatorBand(remaining: 70.4) == .warning)
+    #expect(QuotaIndicatorBand(remaining: 70.5) == .healthy)
 }
 
 @Test func providerSnapshotKeepsIndependentFreshness() {

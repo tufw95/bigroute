@@ -14,8 +14,8 @@ public enum QuotaIndicatorBand: Equatable, Sendable {
         }
 
         switch Int(remaining.rounded()) {
-        case ...10: self = .critical
-        case ...50: self = .warning
+        case ...20: self = .critical
+        case ...70: self = .warning
         default: self = .healthy
         }
     }
