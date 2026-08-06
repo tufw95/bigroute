@@ -216,7 +216,7 @@ struct QuotaAccountCard: View {
             Spacer(minLength: 4)
             Text(quota.map { "\(Int($0.remaining.rounded()))%" } ?? "N/A")
                 .font(.caption.monospacedDigit().weight(.semibold))
-                .foregroundStyle(quota == nil ? .secondary : tint)
+                .foregroundStyle(valueTint)
         }
         .padding(.horizontal, 10)
         .frame(height: 36)
@@ -228,10 +228,16 @@ struct QuotaAccountCard: View {
     }
 
     private var tint: Color {
-        guard let remaining = quota?.remaining else { return .secondary }
-        if remaining <= 15 { return .red }
-        if remaining <= 35 { return .orange }
-        return .green
+        switch QuotaIndicatorBand(remaining: quota?.remaining) {
+        case .unavailable: .secondary
+        case .critical: .red
+        case .warning: .yellow
+        case .healthy: .green
+        }
+    }
+
+    private var valueTint: Color {
+        QuotaIndicatorBand(remaining: quota?.remaining) == .warning ? .primary : tint
     }
 
     private var resetText: String {

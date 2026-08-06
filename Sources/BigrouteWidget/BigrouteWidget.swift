@@ -284,7 +284,7 @@ private struct WidgetAccountRow: View {
             if let quota = account.primaryQuota {
                 Text("\(Int(quota.remaining.rounded()))%")
                     .font(.caption2.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(tint)
+                    .foregroundStyle(valueTint)
                 if let date = date(from: quota.resetAt) {
                     Text(timeRemaining(until: date))
                         .font(.caption2.monospacedDigit())
@@ -298,10 +298,16 @@ private struct WidgetAccountRow: View {
     }
 
     private var tint: Color {
-        guard let remaining = account.primaryQuota?.remaining else { return .secondary }
-        if remaining <= 15 { return .red }
-        if remaining <= 35 { return .orange }
-        return .green
+        switch QuotaIndicatorBand(remaining: account.primaryQuota?.remaining) {
+        case .unavailable: .secondary
+        case .critical: .red
+        case .warning: .yellow
+        case .healthy: .green
+        }
+    }
+
+    private var valueTint: Color {
+        QuotaIndicatorBand(remaining: account.primaryQuota?.remaining) == .warning ? .primary : tint
     }
 
     private func date(from value: String?) -> Date? {

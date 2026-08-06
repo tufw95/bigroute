@@ -1,5 +1,26 @@
 import Foundation
 
+/// Shared quota bands keep the app and widget aligned with the rounded value shown to users.
+public enum QuotaIndicatorBand: Equatable, Sendable {
+    case unavailable
+    case critical
+    case warning
+    case healthy
+
+    public init(remaining: Double?) {
+        guard let remaining, remaining.isFinite else {
+            self = .unavailable
+            return
+        }
+
+        switch Int(remaining.rounded()) {
+        case ...10: self = .critical
+        case ...50: self = .warning
+        default: self = .healthy
+        }
+    }
+}
+
 /// The account ordering preference shared by the app and its widget.
 public enum AccountSortOrder: String, Codable, CaseIterable, Identifiable, Sendable {
     case quotaDescending

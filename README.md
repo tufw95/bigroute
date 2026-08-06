@@ -12,7 +12,7 @@ Bigroute is a native macOS menu bar app and WidgetKit extension for monitoring a
 - Hide provider tabs when only one provider is configured.
 - Choose quota, account-name, or refresh-time sorting in either direction; the app and widget stay in sync.
 - Prefer provider-defined account names over email labels when the quota endpoint exposes them.
-- Show remaining quota, account state, and time until quota refresh.
+- Show remaining quota with red (0–10%), yellow (11–50%), and green (51–100%) indicators, plus account state and time until quota refresh.
 - Refresh providers in parallel every 1–60 minutes; the default is 2 minutes.
 - Store API keys in macOS Keychain and share only sanitized quota snapshots with the widget.
 - Use native SwiftUI, AppKit, WidgetKit, App Intents, semantic colors, and macOS materials.
@@ -22,7 +22,7 @@ Bigroute is a native macOS menu bar app and WidgetKit extension for monitoring a
 
 Bigroute requires macOS 14 or later on Apple Silicon or Intel Macs.
 
-The current office build is available from [Bigroute 1.1.0 Office](https://github.com/tufw95/bigroute/releases/tag/office-v1.1.0):
+The current office build is available from [Bigroute 1.1.1 Office](https://github.com/tufw95/bigroute/releases/tag/office-v1.1.1):
 
 Existing Router Quota 1.0.2 users should use **Check for Updates…** for the cleanest in-place migration. For a manual upgrade, quit Router Quota and move `/Applications/Router Quota.app` to the Trash before copying Bigroute; keeping both bundles can make macOS load the older widget because they intentionally share compatibility identifiers.
 
@@ -31,7 +31,7 @@ Existing Router Quota 1.0.2 users should use **Check for Updates…** for the cl
 3. On first launch, if macOS blocks the app, open **System Settings > Privacy & Security** and choose **Open Anyway**.
 4. Open Bigroute once, then add providers from **Settings**.
 
-Office builds are universal, signed with a persistent internal certificate, and authenticated by a Sparkle Ed25519 signature, but they are not Apple notarized. Bigroute 1.1.0 keeps the existing signed app identity, Keychain service, App Group, and Sparkle key so Router Quota 1.0.2 installations can upgrade in place without losing providers or widget configuration. Machines upgrading from the older ad-hoc preview may receive one final Keychain approval prompt. Widget discovery can still vary because Apple reserves fully provisioned App Groups for paid Developer teams.
+Office builds are universal, signed with a persistent internal certificate, and authenticated by a Sparkle Ed25519 signature, but they are not Apple notarized. Bigroute keeps the existing signed app identity, Keychain service, App Group, and Sparkle key so Router Quota 1.0.2 installations can upgrade in place without losing providers or widget configuration. Machines upgrading from the older ad-hoc preview may receive one final Keychain approval prompt. Widget discovery can still vary because Apple reserves fully provisioned App Groups for paid Developer teams.
 
 An optional public-trust release can also be produced with a paid Apple Developer membership:
 
@@ -116,8 +116,8 @@ Required repository secrets:
 Create an office release after CI passes on `main`:
 
 ```bash
-git tag office-v1.1.0
-git push origin office-v1.1.0
+git tag office-v1.1.1
+git push origin office-v1.1.1
 ```
 
 Existing office installations check the dedicated channel hourly and can also use **Check for Updates…** immediately. The legacy `com.routerquota.*` bundle IDs and App Group are intentionally retained for OTA, Keychain, and WidgetKit continuity even though all user-facing product and release names are Bigroute.

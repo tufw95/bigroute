@@ -163,6 +163,15 @@ import Testing
     #expect(decoded.name == provider.name)
 }
 
+@Test func quotaIndicatorBandsMatchDisplayedPercentages() {
+    #expect(QuotaIndicatorBand(remaining: nil) == .unavailable)
+    #expect(QuotaIndicatorBand(remaining: .nan) == .unavailable)
+    #expect(QuotaIndicatorBand(remaining: 10.4) == .critical)
+    #expect(QuotaIndicatorBand(remaining: 10.5) == .warning)
+    #expect(QuotaIndicatorBand(remaining: 50.4) == .warning)
+    #expect(QuotaIndicatorBand(remaining: 50.5) == .healthy)
+}
+
 @Test func providerSnapshotKeepsIndependentFreshness() {
     let first = ProviderQuotaSnapshot(
         id: UUID(), name: "First", accounts: [],
