@@ -80,6 +80,7 @@ if [[ -n "$OFFICE_SIGNING_KEYCHAIN_PATH" ]]; then
   codesign_args+=(--keychain "$OFFICE_SIGNING_KEYCHAIN_PATH")
   security find-identity -p codesigning "$OFFICE_SIGNING_KEYCHAIN_PATH"
 fi
+runtime_codesign_args=("${codesign_args[@]}" --options runtime)
 sparkle_version="$SPARKLE/Versions/B"
 sparkle_nested=(
   "$sparkle_version/Autoupdate"
@@ -89,21 +90,28 @@ sparkle_nested=(
 )
 for nested_code in "${sparkle_nested[@]}"; do
   echo "Signing $nested_code"
-  codesign "${codesign_args[@]}" \
+  codesign "${runtime_codesign_args[@]}" \
     --preserve-metadata=identifier,entitlements,requirements \
     "$nested_code"
 done
-codesign "${codesign_args[@]}" \
+codesign "${runtime_codesign_args[@]}" \
   --preserve-metadata=identifier,entitlements,requirements \
   "$SPARKLE"
-codesign "${codesign_args[@]}" --generate-entitlement-der \
+codesign "${runtime_codesign_args[@]}" --generate-entitlement-der \
   --entitlements "$ROOT_DIR/Config/Bigroute/BigrouteWidget.entitlements" \
   "$WIDGET"
-codesign "${codesign_args[@]}" --generate-entitlement-der \
+codesign "${runtime_codesign_args[@]}" --generate-entitlement-der \
   --entitlements "$ROOT_DIR/Config/Bigroute/Bigroute.entitlements" \
   "$DIST_APP"
 
 codesign --verify --deep --strict --verbose=2 "$DIST_APP"
+for runtime_code in "${sparkle_nested[@]}" "$SPARKLE" "$WIDGET" "$DIST_APP"; do
+  runtime_details="$(codesign -dvv "$runtime_code" 2>&1)"
+  if [[ "$runtime_details" != *"flags="*"runtime"* ]]; then
+    echo "$runtime_code is missing the hardened runtime signature flag." >&2
+    exit 1
+  fi
+done
 lipo "$DIST_APP/Contents/MacOS/Bigroute" -verify_arch arm64
 lipo "$DIST_APP/Contents/MacOS/Bigroute" -verify_arch x86_64
 lipo "$WIDGET/Contents/MacOS/BigrouteWidget" -verify_arch arm64
@@ -117,6 +125,7 @@ if [[ "$designated_requirement" != *"certificate root = H\"$expected_fingerprint
 fi
 
 ditto -c -k --sequesterRsrc --keepParent "$DIST_APP" "$ZIP_PATH"
+unzip -tq "$ZIP_PATH" >/dev/null
 
 dmg_stage="$(mktemp -d)"
 ditto "$DIST_APP" "$dmg_stage/Bigroute.app"
@@ -128,6 +137,8 @@ hdiutil create \
   -ov \
   "$DMG_PATH" >/dev/null
 codesign "${codesign_args[@]}" "$DMG_PATH"
+codesign --verify --strict --verbose=2 "$DMG_PATH"
+hdiutil verify "$DMG_PATH" >/dev/null
 
 echo "Created Sparkle-ready office release candidates:"
 echo "  $ZIP_PATH"

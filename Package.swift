@@ -20,6 +20,7 @@ let package = Package(
             path: "Sources/BigrouteCore",
             sources: [
                 "QuotaService.swift",
+                "NineRouterAutomation.swift",
                 "RouterEndpoint.swift",
                 "CustomQuotaProvider.swift",
                 "SharedQuotaStore.swift",

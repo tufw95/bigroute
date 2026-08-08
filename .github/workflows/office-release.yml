@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: office-release-${{ github.ref }}-${{ github.sha }}
+  group: office-release-channel
   cancel-in-progress: false
 
 jobs:
@@ -185,6 +185,20 @@ jobs:
           test -s "$zip"
           test -s "$appcast"
           codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --verify --strict --verbose=2 "$dmg"
+          hdiutil verify "$dmg" >/dev/null
+          unzip -tq "$zip" >/dev/null
+          for runtime_code in \
+            "$app" \
+            "$widget" \
+            "$app/Contents/Frameworks/Sparkle.framework" \
+            "$app/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" \
+            "$app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc" \
+            "$app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc" \
+            "$app/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app"; do
+            runtime_details="$(codesign -dvv "$runtime_code" 2>&1)"
+            [[ "$runtime_details" == *"flags="*"runtime"* ]]
+          done
           lipo "$app/Contents/MacOS/Bigroute" -verify_arch arm64
           lipo "$app/Contents/MacOS/Bigroute" -verify_arch x86_64
           lipo "$widget/Contents/MacOS/BigrouteWidget" -verify_arch arm64
@@ -215,11 +229,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; refusing to replace published assets." >&2
-            exit 1
-          fi
-
           notes_path="$RUNNER_TEMP/office-release-notes.md"
           cat > "$notes_path" <<'NOTES'
           ## Office OTA channel
@@ -231,14 +240,26 @@ jobs:
           Existing Router Quota 1.0.2 users should update from inside the app. For a manual upgrade, quit Router Quota and remove `/Applications/Router Quota.app` before installing Bigroute so macOS does not retain two widgets with the same compatibility identifier.
           NOTES
 
-          gh release create "$TAG" \
-            --verify-tag \
-            --target "$GITHUB_SHA" \
-            --title "Bigroute $VERSION Office" \
-            --notes-file "$notes_path" \
-            "dist/Bigroute-$VERSION.dmg" \
-            "dist/Bigroute-$VERSION.zip" \
-            "dist/appcast.xml"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; resuming publication from the same immutable tag."
+            gh release edit "$TAG" \
+              --title "Bigroute $VERSION Office" \
+              --notes-file "$notes_path"
+            gh release upload "$TAG" \
+              "dist/Bigroute-$VERSION.dmg" \
+              "dist/Bigroute-$VERSION.zip" \
+              "dist/appcast.xml" \
+              --clobber
+          else
+            gh release create "$TAG" \
+              --verify-tag \
+              --target "$GITHUB_SHA" \
+              --title "Bigroute $VERSION Office" \
+              --notes-file "$notes_path" \
+              "dist/Bigroute-$VERSION.dmg" \
+              "dist/Bigroute-$VERSION.zip" \
+              "dist/appcast.xml"
+          fi
 
       - name: Update office channel feed
         env:

@@ -15,6 +15,7 @@ Bigroute is a native macOS menu bar app and WidgetKit extension for monitoring a
 - Show remaining quota with red (0–20%), yellow (21–70%), and green (71–100%) indicators, plus account state and time until quota refresh.
 - Refresh providers in parallel every 1–60 minutes; the default is 2 minutes.
 - Store API keys in macOS Keychain and share only sanitized quota snapshots with the widget.
+- Optionally keep 9Router ChatGPT OAuth routing healthy: deactivate an account when any measured quota window reaches exactly 0%, then reactivate Bigroute-managed accounts only after every measured window is above 0% and each exhausted window reports a newer reset epoch.
 - Use native SwiftUI, AppKit, WidgetKit, App Intents, semantic colors, and macOS materials.
 - Deliver signed automatic updates with Sparkle 2.
 
@@ -22,7 +23,7 @@ Bigroute is a native macOS menu bar app and WidgetKit extension for monitoring a
 
 Bigroute requires macOS 14 or later on Apple Silicon or Intel Macs.
 
-The current office build is available from [Bigroute 1.1.2 Office](https://github.com/tufw95/bigroute/releases/tag/office-v1.1.2):
+The current office build is available from [Bigroute 1.2.0 Office](https://github.com/tufw95/bigroute/releases/tag/office-v1.2.0):
 
 Existing Router Quota 1.0.2 users should use **Check for Updates…** for the cleanest in-place migration. For a manual upgrade, quit Router Quota and move `/Applications/Router Quota.app` to the Trash before copying Bigroute; keeping both bundles can make macOS load the older widget because they intentionally share compatibility identifiers.
 
@@ -49,6 +50,18 @@ Open **Bigroute > Settings**, then add a provider with:
 - **Name:** any label that is useful to your team.
 - **Endpoint:** the provider's HTTPS base URL or supported quota URL.
 - **API key:** the credential allowed to read that provider's quota endpoint.
+
+For a 9Router provider, choose **9Router** as the provider type to enable **Automatic Account Routing**. This optional feature also asks for the 9Router dashboard password, which is stored separately in macOS Keychain. Bigroute changes only the `isActive` state of ChatGPT OAuth accounts:
+
+- Any measured quota window at exactly `0%`: deactivate the account so 9Router stops sending new requests to it.
+- Every measured quota window above `0%`: reactivate it, but only if Bigroute previously deactivated that account and the previously exhausted window has crossed its recorded reset epoch.
+- Stale, throttled, missing, invalid, unlimited-only, or unavailable quota: make no change.
+
+Automatic routing is off by default, requests fresh 9Router quota before each reconciliation, never applies to OmniRouter or auto-detected unknown providers, and does not reactivate accounts that a person disabled manually. Reactivation requires complete session/weekly quota windows with valid reset times; legacy ownership without a recorded reset epoch remains inactive until manually enabled. Bigroute reuses the authenticated dashboard session across refreshes and re-authenticates when 9Router expires or rejects it.
+Run automatic routing from one designated, always-on controller Mac for each 9Router endpoint, and configure only one automatic-routing provider for that endpoint. Leave the feature off on every other Mac that points at that endpoint because 9Router does not expose a stable shared ownership or controller lease.
+Turning automatic routing or the provider off, deleting the provider, or changing its router endpoint, API key, or dashboard password relinquishes Bigroute's ownership without changing the account's current `isActive` state. An account that is already inactive remains inactive and may need manual activation; re-enabling later starts with a clean ownership state.
+Before each deactivation, Bigroute records ownership locally. If 9Router definitively rejects the write, Bigroute rolls that ownership record back. For a timeout, server error, rate limit, or malformed response, it verifies the account with a follow-up read; unless the server explicitly proves the write was rejected, ownership is retained for safe recovery on the next run.
+The configured endpoint must permit authenticated 9Router dashboard API access. If dashboard access is disabled for a public tunnel, use the router's LAN or Tailscale endpoint for that provider instead.
 
 If only one provider exists, the provider picker is hidden. With multiple providers, use the centered picker to switch between them. API keys stay in macOS Keychain and are never copied into WidgetKit snapshots or release artifacts.
 
@@ -116,8 +129,8 @@ Required repository secrets:
 Create an office release after CI passes on `main`:
 
 ```bash
-git tag office-v1.1.2
-git push origin office-v1.1.2
+git tag -a office-v1.2.0 -m "Bigroute 1.2.0"
+git push origin office-v1.2.0
 ```
 
 Existing office installations check the dedicated channel hourly and can also use **Check for Updates…** immediately. The legacy `com.routerquota.*` bundle IDs and App Group are intentionally retained for OTA, Keychain, and WidgetKit continuity even though all user-facing product and release names are Bigroute.

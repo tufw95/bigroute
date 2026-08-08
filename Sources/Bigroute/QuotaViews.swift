@@ -305,7 +305,7 @@ struct SettingsView: View {
             } header: {
                 Text("Providers")
             } footer: {
-                Text("The app automatically recognizes 9Router and OmniRouter quota responses. API keys are stored in Keychain.")
+                Text("The app automatically recognizes 9Router and OmniRouter quota responses. API keys and 9Router dashboard passwords are stored in Keychain.")
             }
 
             Section("Display") {
@@ -377,7 +377,7 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) { providerToDelete = nil }
         } message: {
-            Text("Its saved API key and cached widget data will be removed.")
+            Text("Its saved credentials, widget data, and automatic-routing ownership will be removed. Accounts already inactive in 9Router will not be reactivated automatically.")
         }
     }
 
@@ -423,6 +423,12 @@ private struct ProviderSettingsRow: View {
                     .lineLimit(1)
             }
             Spacer()
+            if provider.isEnabled && provider.isAutomaticAccountRoutingEnabled {
+                Label("Auto routing", systemImage: "arrow.triangle.branch")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .labelStyle(.titleAndIcon)
+            }
             Circle()
                 .fill(provider.isEnabled ? .green : .secondary)
                 .frame(width: 7, height: 7)
@@ -449,8 +455,39 @@ private struct ProviderEditorView: View {
                 Section("Provider") {
                     TextField("Name", text: $provider.name, prompt: Text("My Router"))
                     TextField("Endpoint", text: $provider.endpoint, prompt: Text("https://router.example.com"))
+                    Picker("Provider type", selection: $provider.apiKind) {
+                        ForEach(QuotaAPIKind.allCases, id: \.self) { kind in
+                            Text(kind.displayName).tag(kind)
+                        }
+                    }
                     SecureField("API key", text: $provider.apiKey)
                     Toggle("Enabled", isOn: $provider.isEnabled)
+                }
+                if provider.apiKind == .nineRouter {
+                    Section("Automatic Account Routing") {
+                        Toggle(
+                            "Automatically avoid exhausted accounts",
+                            isOn: $provider.isAutomaticAccountRoutingEnabled
+                        )
+                        if provider.isAutomaticAccountRoutingEnabled {
+                            SecureField("9Router dashboard password", text: $provider.dashboardPassword)
+                            Text("If any measured quota window reaches exactly 0%, Bigroute deactivates the ChatGPT account. It reactivates the account only after every window is above 0% and the exhausted window's reset time has advanced.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("Stale, throttled, missing, unlimited-only, or invalid quota data never changes account state.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("Only accounts previously deactivated by Bigroute are reactivated. Configure only one automatic-routing provider and use one designated, always-on Mac per 9Router endpoint; 9Router has no shared controller lease.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("Turning automation or the provider off, deleting it, or changing its endpoint, API key, or dashboard password releases ownership without reactivating accounts that are already inactive. Those accounts may need manual activation.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("The configured endpoint must allow 9Router dashboard access; use a LAN or Tailscale endpoint if dashboard access is disabled on your public tunnel.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 Section {
                     Text("Endpoint can be a base URL or the complete /v1/quota or /api/usage/quota URL.")
@@ -467,16 +504,24 @@ private struct ProviderEditorView: View {
                 }
             }
             .formStyle(.grouped)
+            .onChange(of: provider.apiKind) { _, kind in
+                if kind != .nineRouter {
+                    provider.isAutomaticAccountRoutingEnabled = false
+                }
+            }
             HStack {
                 Button("Cancel") { dismiss() }
                 Spacer()
-                Button("Save and Test") { save() }
+                Button("Save") { save() }
                     .buttonStyle(.borderedProminent)
                     .disabled(provider.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(16)
         }
-        .frame(width: 480, height: 440)
+        .frame(
+            width: 500,
+            height: provider.apiKind == .nineRouter ? 640 : 500
+        )
         .environment(monitor)
     }
 
@@ -489,8 +534,22 @@ private struct ProviderEditorView: View {
             guard !provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw EditorError("Enter an API key.")
             }
+            if provider.isAutomaticAccountRoutingEnabled {
+                guard provider.apiKind == .nineRouter else {
+                    throw EditorError("Automatic account routing is available only for 9Router providers.")
+                }
+                guard !provider.dashboardPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw EditorError("Enter the 9Router dashboard password.")
+                }
+            }
+            validationMessage = nil
             onSave(provider)
-            if monitor.errorMessage == nil { dismiss() }
+            if let saveError = monitor.errorMessage {
+                // Keep the editor open so synchronous persistence failures are actionable.
+                validationMessage = saveError
+            } else {
+                dismiss()
+            }
         } catch {
             validationMessage = error.localizedDescription
         }

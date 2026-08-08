@@ -281,16 +281,44 @@ public struct CodexQuotaSummary: Codable, Equatable, Sendable {
 }
 
 public struct CodexQuotaResponse: Codable, Equatable, Sendable {
+    public struct CacheMetadata: Codable, Equatable, Sendable {
+        public let state: String?
+
+        public init(state: String?) {
+            self.state = state
+        }
+    }
+
     public let object: String
     public let generatedAt: String
     public let summary: CodexQuotaSummary
     public let data: [CodexQuotaAccount]
+    public let cache: CacheMetadata?
+
+    public var isFreshForAutomaticRouting: Bool {
+        guard let state = cache?.state?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              ["hit", "miss", "shared"].contains(state),
+              let generatedDate = Self.parseGeneratedDate(generatedAt) else {
+            return false
+        }
+        let age = Date().timeIntervalSince(generatedDate)
+        return age >= -5 * 60 && age <= 5 * 60
+    }
+
+    private static func parseGeneratedDate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
 }
 
 public enum QuotaServiceError: Error, LocalizedError, Equatable {
     case unsupported
     case unauthorized
     case invalidResponse
+    case freshQuotaUnavailable
     case serverError(Int)
 
     public var errorDescription: String? {
@@ -301,6 +329,8 @@ public enum QuotaServiceError: Error, LocalizedError, Equatable {
             return "The saved API key cannot access this quota endpoint."
         case .invalidResponse:
             return "The router returned an invalid quota response."
+        case .freshQuotaUnavailable:
+            return "9Router could not provide fresh quota data, so automatic routing made no changes."
         case let .serverError(statusCode):
             return "Router quota is temporarily unavailable (HTTP \(statusCode))."
         }
@@ -317,16 +347,22 @@ public final class QuotaService: @unchecked Sendable {
     public func fetch(
         apiKey: String,
         targetBaseURL: URL,
-        forceRefresh: Bool = false
+        forceRefresh: Bool = false,
+        requireFreshResponse: Bool = false
     ) async throws -> CodexQuotaResponse {
         let safeBaseURL = try RouterEndpoint.normalizedURL(from: targetBaseURL.absoluteString)
         var components = URLComponents(
             url: Self.quotaURL(from: safeBaseURL),
             resolvingAgainstBaseURL: false
         )
+        var queryItems: [URLQueryItem] = []
         if forceRefresh {
-            components?.queryItems = [URLQueryItem(name: "refresh", value: "1")]
+            queryItems.append(URLQueryItem(name: "refresh", value: "1"))
         }
+        if requireFreshResponse {
+            queryItems.append(URLQueryItem(name: "bigroute_refresh", value: UUID().uuidString))
+        }
+        components?.queryItems = queryItems.isEmpty ? nil : queryItems
         guard let url = components?.url else {
             throw QuotaServiceError.invalidResponse
         }
@@ -335,7 +371,14 @@ public final class QuotaService: @unchecked Sendable {
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue(
+            requireFreshResponse ? "no-cache, no-store, max-age=0" : "no-cache",
+            forHTTPHeaderField: "Cache-Control"
+        )
+        if requireFreshResponse {
+            request.setValue("no-cache", forHTTPHeaderField: "Pragma")
+            request.setValue("0", forHTTPHeaderField: "Expires")
+        }
         request.timeoutInterval = 25
 
         let (data, response) = try await session.data(for: request)
@@ -343,7 +386,9 @@ public final class QuotaService: @unchecked Sendable {
             throw QuotaServiceError.invalidResponse
         }
         switch http.statusCode {
-        case 200..<300:
+        case 200 where requireFreshResponse:
+            break
+        case 200..<300 where !requireFreshResponse:
             break
         case 401, 403:
             throw QuotaServiceError.unauthorized
@@ -354,7 +399,15 @@ public final class QuotaService: @unchecked Sendable {
         }
 
         do {
-            return try JSONDecoder().decode(CodexQuotaResponse.self, from: data)
+            let decoded = try JSONDecoder().decode(CodexQuotaResponse.self, from: data)
+            if requireFreshResponse,
+               (!decoded.isFreshForAutomaticRouting
+                || !Self.isSafeAutomaticRoutingEnvelope(data: data, response: http)) {
+                throw QuotaServiceError.freshQuotaUnavailable
+            }
+            return decoded
+        } catch let error as QuotaServiceError {
+            throw error
         } catch {
             throw QuotaServiceError.invalidResponse
         }
@@ -375,6 +428,175 @@ public final class QuotaService: @unchecked Sendable {
         components?.query = nil
         components?.fragment = nil
         return components?.url ?? baseURL.appendingPathComponent("v1/quota")
+    }
+
+    static func isSafeAutomaticRoutingEnvelope(
+        data: Data,
+        response: HTTPURLResponse? = nil,
+        now: Date = Date()
+    ) -> Bool {
+        if let response {
+            guard response.statusCode == 200,
+                  automaticRoutingHeadersAreFresh(response.allHeaderFields) else {
+                return false
+            }
+        }
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return false
+        }
+        guard let candidates = routingMetadataCandidates(in: root) else { return false }
+        for (index, candidate) in candidates.enumerated() {
+            if !routingCandidateIsAvailable(candidate, allowCacheState: index > 0, now: now) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private static func routingMetadataCandidates(in root: [String: Any]) -> [[String: Any]]? {
+        var result = [root]
+        var frontier = [root]
+        for _ in 0..<3 {
+            var next: [[String: Any]] = []
+            for candidate in frontier {
+                for key in ["cache", "meta", "metadata"] {
+                    guard let rawNested = candidate[key] else { continue }
+                    guard let nested = rawNested as? [String: Any] else { return nil }
+                    result.append(nested)
+                    next.append(nested)
+                }
+            }
+            frontier = next
+            if frontier.isEmpty { break }
+        }
+        return result
+    }
+
+    private static func routingCandidateIsAvailable(
+        _ candidate: [String: Any],
+        allowCacheState: Bool,
+        now: Date
+    ) -> Bool {
+        for key in ["available", "success"] {
+            guard let raw = candidate[key] else { continue }
+            guard let flag = routingBool(raw), flag else { return false }
+        }
+        for key in ["stale", "cached"] {
+            guard let raw = candidate[key] else { continue }
+            guard let flag = routingBool(raw), !flag else { return false }
+        }
+        if let rawPartial = candidate["partial"] {
+            guard let partial = routingBool(rawPartial), !partial else { return false }
+        }
+        for key in ["complete", "isComplete", "is_complete"] {
+            guard let rawComplete = candidate[key] else { continue }
+            guard let complete = routingBool(rawComplete), complete else { return false }
+        }
+        if let rawStatus = candidate["status"] {
+            guard let status = routingString(rawStatus)?.lowercased() else { return false }
+            let successStatuses = ["available", "valid", "active", "connected", "ok", "success", "fresh", "ready"]
+            let cacheStatuses = ["hit", "miss", "shared"]
+            guard successStatuses.contains(status)
+                    || (allowCacheState && cacheStatuses.contains(status)) else {
+                return false
+            }
+        }
+        if let rawState = candidate["state"] {
+            guard allowCacheState,
+                  let state = routingString(rawState)?.lowercased(),
+                  ["hit", "miss", "shared"].contains(state) else {
+                return false
+            }
+        }
+        for key in ["generatedAt", "generated_at", "fetchedAt", "fetched_at"] {
+            guard let raw = candidate[key] else { continue }
+            guard let value = routingString(raw),
+                  let date = parseAutomaticRoutingDate(value) else {
+                return false
+            }
+            let age = now.timeIntervalSince(date)
+            guard age >= -5 * 60, age <= 5 * 60 else { return false }
+        }
+        for key in ["error", "errorCode", "error_code"] {
+            if routingFailureValue(candidate[key]) { return false }
+        }
+        if let rawMessage = candidate["message"] {
+            guard rawMessage is NSNull || routingString(rawMessage) != nil else { return false }
+            if let message = routingString(rawMessage), routingFailureMessage(message) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private static func automaticRoutingHeadersAreFresh(_ headers: [AnyHashable: Any]) -> Bool {
+        for (rawName, rawValue) in headers {
+            let name = String(describing: rawName).lowercased()
+            let value = String(describing: rawValue).lowercased()
+            if name == "age" {
+                guard let age = Double(value.trimmingCharacters(in: .whitespacesAndNewlines)),
+                      age.isFinite,
+                      age >= 0,
+                      age <= 5 * 60 else {
+                    return false
+                }
+            }
+            if ["warning", "x-cache", "cf-cache-status", "x-cache-status"].contains(name),
+               ["stale", "expired", "updating", "error", "failed"].contains(where: value.contains) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private static func routingBool(_ value: Any) -> Bool? {
+        if let number = value as? NSNumber,
+           CFGetTypeID(number) == CFBooleanGetTypeID() {
+            return number.boolValue
+        }
+        if let string = value as? String {
+            switch string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "true": return true
+            case "false": return false
+            default: return nil
+            }
+        }
+        return nil
+    }
+
+    private static func routingString(_ value: Any) -> String? {
+        guard let string = value as? String else { return nil }
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func routingFailureValue(_ value: Any?) -> Bool {
+        guard let value else { return false }
+        if value is NSNull { return false }
+        if let bool = routingBool(value) { return bool }
+        if let string = value as? String {
+            return !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return true
+    }
+
+    private static func routingFailureMessage(_ message: String) -> Bool {
+        let normalized = message.lowercased()
+        return [
+            "error", "failed", "failure", "denied", "forbidden", "unauthorized",
+            "invalid", "rate limit", "rate-limit", "throttl", "not found",
+            "unavailable", "expired", "partial"
+        ].contains { normalized.contains($0) }
+    }
+
+    private static func parseAutomaticRoutingDate(_ value: String) -> Date? {
+        if let seconds = Double(value) {
+            let timestamp = seconds > 10_000_000_000 ? seconds / 1000 : seconds
+            return Date(timeIntervalSince1970: timestamp)
+        }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 }
 
@@ -848,7 +1070,8 @@ public final class CustomQuotaService: @unchecked Sendable {
 
     public func fetch(
         provider: CustomQuotaProvider,
-        forceRefresh: Bool = false
+        forceRefresh: Bool = false,
+        requireFreshResponse: Bool = false
     ) async throws -> [CodexQuotaAccount] {
         let endpoint = provider.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -859,12 +1082,24 @@ public final class CustomQuotaService: @unchecked Sendable {
 
         switch provider.apiKind {
         case .nineRouter:
-            return try await fetchNine(url: url, key: key, providerID: provider.id, forceRefresh: forceRefresh)
+            return try await fetchNine(
+                url: url,
+                key: key,
+                providerID: provider.id,
+                forceRefresh: forceRefresh,
+                requireFreshResponse: requireFreshResponse
+            )
         case .omniRouter:
             return try await fetchOmni(url: url, key: key, providerID: provider.id, forceRefresh: forceRefresh)
         case .automatic:
             do {
-                return try await fetchNine(url: url, key: key, providerID: provider.id, forceRefresh: forceRefresh)
+                return try await fetchNine(
+                    url: url,
+                    key: key,
+                    providerID: provider.id,
+                    forceRefresh: forceRefresh,
+                    requireFreshResponse: requireFreshResponse
+                )
             } catch let firstError {
                 do {
                     return try await fetchOmni(url: url, key: key, providerID: provider.id, forceRefresh: forceRefresh)
@@ -882,12 +1117,14 @@ public final class CustomQuotaService: @unchecked Sendable {
         url: URL,
         key: String,
         providerID: UUID,
-        forceRefresh: Bool
+        forceRefresh: Bool,
+        requireFreshResponse: Bool
     ) async throws -> [CodexQuotaAccount] {
         let response = try await QuotaService().fetch(
             apiKey: key,
             targetBaseURL: url,
-            forceRefresh: forceRefresh
+            forceRefresh: forceRefresh,
+            requireFreshResponse: requireFreshResponse
         )
         return response.data.map { $0.sourced(providerID: providerID) }
     }

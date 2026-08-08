@@ -6,6 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-08
+
+### Added
+
+- Added optional automatic routing for explicitly configured 9Router providers: ChatGPT OAuth accounts are deactivated when any measured quota window reaches exactly 0% and Bigroute-owned accounts are reactivated only after every measured window is above 0% and exhausted-window reset epochs advance.
+- Added a Keychain-backed 9Router dashboard password and provider-scoped ownership state so manually disabled accounts are not reactivated.
+
+### Security
+
+- Require fresh quota metadata, complete finite 0–100% values, valid reset epochs, a valid authenticated dashboard session, and a confirmed mutation response or follow-up state read before changing routing.
+- Persist deactivation ownership before the remote write and cancel in-flight reconciliation when provider settings change.
+- Reuse the authenticated 9Router session across refreshes and re-authenticate after expiry or a rejected session.
+- Roll back write-ahead ownership only after a definitive mutation rejection; retain ownership after ambiguous failures or mismatching immediate reads so a later run can recover safely.
+- Relinquish automation ownership without mutating 9Router when routing is turned off, a provider is disabled or deleted, or its router endpoint, API key, or dashboard password changes.
+- Ignore OmniRouter, unknown providers, non-ChatGPT connections, stale/throttled/unlimited-only quota, missing reset epochs, and invalid or unavailable measurements.
+
+### Documentation
+
+- Document one enabled automatic-routing provider and one designated, always-on controller Mac per 9Router endpoint. Other Macs should keep automatic routing disabled because 9Router has no shared controller lease.
+- Clarify that releasing ownership does not reactivate accounts that are already inactive; manual activation may be required.
+
 ## [1.1.2] - 2026-08-06
 
 ### Changed
@@ -64,7 +85,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.1.2...HEAD
+[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.2.0...HEAD
+[1.2.0]: https://github.com/tufw95/bigroute/releases/tag/office-v1.2.0
 [1.1.2]: https://github.com/tufw95/bigroute/releases/tag/office-v1.1.2
 [1.1.1]: https://github.com/tufw95/bigroute/releases/tag/office-v1.1.1
 [1.1.0]: https://github.com/tufw95/bigroute/releases/tag/office-v1.1.0
