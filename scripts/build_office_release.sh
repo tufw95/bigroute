@@ -74,13 +74,14 @@ done
   "$APP_INFO"
 
 # A persistent self-signed identity keeps Keychain ACLs stable across office
-# updates without claiming Apple Developer ID trust or notarization.
+# updates without claiming Apple Developer ID trust or notarization. The
+# certificate has no Apple Team ID, so the office build must not enable the
+# hardened runtime: dyld library validation would reject embedded Sparkle.
 codesign_args=(--force --verbose=2 --sign "$OFFICE_SIGN_IDENTITY" --timestamp=none)
 if [[ -n "$OFFICE_SIGNING_KEYCHAIN_PATH" ]]; then
   codesign_args+=(--keychain "$OFFICE_SIGNING_KEYCHAIN_PATH")
   security find-identity -p codesigning "$OFFICE_SIGNING_KEYCHAIN_PATH"
 fi
-runtime_codesign_args=("${codesign_args[@]}" --options runtime)
 sparkle_version="$SPARKLE/Versions/B"
 sparkle_nested=(
   "$sparkle_version/Autoupdate"
@@ -90,25 +91,25 @@ sparkle_nested=(
 )
 for nested_code in "${sparkle_nested[@]}"; do
   echo "Signing $nested_code"
-  codesign "${runtime_codesign_args[@]}" \
+  codesign "${codesign_args[@]}" \
     --preserve-metadata=identifier,entitlements,requirements \
     "$nested_code"
 done
-codesign "${runtime_codesign_args[@]}" \
+codesign "${codesign_args[@]}" \
   --preserve-metadata=identifier,entitlements,requirements \
   "$SPARKLE"
-codesign "${runtime_codesign_args[@]}" --generate-entitlement-der \
+codesign "${codesign_args[@]}" --generate-entitlement-der \
   --entitlements "$ROOT_DIR/Config/Bigroute/BigrouteWidget.entitlements" \
   "$WIDGET"
-codesign "${runtime_codesign_args[@]}" --generate-entitlement-der \
+codesign "${codesign_args[@]}" --generate-entitlement-der \
   --entitlements "$ROOT_DIR/Config/Bigroute/Bigroute.entitlements" \
   "$DIST_APP"
 
 codesign --verify --deep --strict --verbose=2 "$DIST_APP"
-for runtime_code in "${sparkle_nested[@]}" "$SPARKLE" "$WIDGET" "$DIST_APP"; do
-  runtime_details="$(codesign -dvv "$runtime_code" 2>&1)"
-  if [[ "$runtime_details" != *"flags="*"runtime"* ]]; then
-    echo "$runtime_code is missing the hardened runtime signature flag." >&2
+for office_code in "${sparkle_nested[@]}" "$SPARKLE" "$WIDGET" "$DIST_APP"; do
+  signing_details="$(codesign -dvv "$office_code" 2>&1)"
+  if [[ "$signing_details" == *"flags="*"runtime"* ]]; then
+    echo "$office_code unexpectedly carries a hardened runtime signature; office Sparkle builds must remain loadable with the self-signed certificate." >&2
     exit 1
   fi
 done

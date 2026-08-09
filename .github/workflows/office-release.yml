@@ -188,7 +188,7 @@ jobs:
           codesign --verify --strict --verbose=2 "$dmg"
           hdiutil verify "$dmg" >/dev/null
           unzip -tq "$zip" >/dev/null
-          for runtime_code in \
+          for office_code in \
             "$app" \
             "$widget" \
             "$app/Contents/Frameworks/Sparkle.framework" \
@@ -196,8 +196,11 @@ jobs:
             "$app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc" \
             "$app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc" \
             "$app/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app"; do
-            runtime_details="$(codesign -dvv "$runtime_code" 2>&1)"
-            [[ "$runtime_details" == *"flags="*"runtime"* ]]
+            signing_details="$(codesign -dvv "$office_code" 2>&1)"
+            if [[ "$signing_details" == *"flags="*"runtime"* ]]; then
+              echo "$office_code unexpectedly carries a hardened runtime signature; office Sparkle builds must remain loadable with the self-signed certificate." >&2
+              exit 1
+            fi
           done
           lipo "$app/Contents/MacOS/Bigroute" -verify_arch arm64
           lipo "$app/Contents/MacOS/Bigroute" -verify_arch x86_64
@@ -235,7 +238,7 @@ jobs:
 
           This build is distributed for internal office use and is authenticated by a Sparkle Ed25519 signature.
 
-          It uses a persistent internal code-signing certificate and is not Apple notarized. The first installation may require **Privacy & Security > Open Anyway**. Once installed, later office releases update automatically through Bigroute.
+          It uses a persistent internal code-signing certificate and is not Apple notarized. Because that certificate has no Apple Team ID, the office build intentionally does not enable Hardened Runtime library validation; Sparkle Ed25519 signatures still authenticate every OTA update. The first installation may require **Privacy & Security > Open Anyway**. Once installed, later office releases update automatically through Bigroute.
 
           Existing Router Quota 1.0.2 users should update from inside the app. For a manual upgrade, quit Router Quota and remove `/Applications/Router Quota.app` before installing Bigroute so macOS does not retain two widgets with the same compatibility identifier.
           NOTES

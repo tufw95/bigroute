@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-08-09
+
+### Fixed
+
+- Fixed the office OTA launch failure on macOS: self-signed office builds no longer enable Hardened Runtime library validation that rejects the embedded Sparkle framework when no Apple Team ID is available.
+- Kept Sparkle Ed25519 verification and the persistent office signing identity unchanged so existing credentials and update trust remain intact.
+
 ## [1.2.0] - 2026-08-08
 
 ### Added
@@ -85,7 +92,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.2.0...HEAD
+[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.2.1...HEAD
+[1.2.1]: https://github.com/tufw95/bigroute/releases/tag/office-v1.2.1
 [1.2.0]: https://github.com/tufw95/bigroute/releases/tag/office-v1.2.0
 [1.1.2]: https://github.com/tufw95/bigroute/releases/tag/office-v1.1.2
 [1.1.1]: https://github.com/tufw95/bigroute/releases/tag/office-v1.1.1
