@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+"$ROOT_DIR/scripts/verify_monitoring_only.sh"
 VERSION="${VERSION:?Set VERSION to a stable semantic version such as 1.0.0.}"
 BUILD_NUMBER="${BUILD_NUMBER:?Set BUILD_NUMBER to a positive integer.}"
 OFFICE_SIGN_IDENTITY="${OFFICE_SIGN_IDENTITY:?Set OFFICE_SIGN_IDENTITY to the persistent office signing identity.}"

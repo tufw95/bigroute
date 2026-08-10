@@ -19,24 +19,8 @@ public struct BigrouteConfiguration: Equatable, Sendable {
     public static let defaults = BigrouteConfiguration()
 }
 
-public enum CredentialStoreError: Error, LocalizedError, Equatable {
-    case duplicateProviderID
-    case credentialRollbackFailed
-
-    public var errorDescription: String? {
-        switch self {
-        case .duplicateProviderID:
-            "Each provider must have a unique identifier."
-        case .credentialRollbackFailed:
-            "Bigroute could not restore the previous Keychain credentials after a save failure. Review the provider credentials before enabling automatic routing."
-        }
-    }
-}
-
-/// Stores provider metadata in UserDefaults and provider secrets in the Keychain.
+/// Stores provider metadata in UserDefaults and API keys in the Keychain.
 public struct CredentialStore: @unchecked Sendable {
-    private static let persistenceLock = NSLock()
-
     private let defaults: UserDefaults
     private let envURL: URL
     private let v2ConfigKey = "routerQuota.configuration.v2"
@@ -48,7 +32,6 @@ public struct CredentialStore: @unchecked Sendable {
         let endpoint: String
         let apiKind: QuotaAPIKind
         let isEnabled: Bool
-        let isAutomaticAccountRoutingEnabled: Bool?
     }
 
     private struct PersistedSettings: Codable {
@@ -56,11 +39,6 @@ public struct CredentialStore: @unchecked Sendable {
         let providers: [PersistedProvider]
         let refreshIntervalMinutes: Int
         let sortOrder: AccountSortOrder?
-    }
-
-    private struct PersistedSecrets {
-        let apiKey: String
-        let dashboardPassword: String
     }
 
     private struct LegacySettings: Codable {
@@ -77,21 +55,16 @@ public struct CredentialStore: @unchecked Sendable {
 
     public func load() -> BigrouteConfiguration {
         if let persisted = loadPersisted() {
-            var seenProviderIDs: Set<UUID> = []
+            removeRetiredAutomaticRoutingData(from: persisted)
             return BigrouteConfiguration(
-                providers: persisted.providers.compactMap { provider in
-                    guard seenProviderIDs.insert(provider.id).inserted else { return nil }
-                    return CustomQuotaProvider(
+                providers: persisted.providers.map { provider in
+                    CustomQuotaProvider(
                         id: provider.id,
                         name: provider.name,
                         endpoint: provider.endpoint,
                         apiKey: Keychain.value(for: Self.keychainAccount(provider.id)) ?? "",
-                        dashboardPassword: Keychain.value(
-                            for: Self.dashboardPasswordKeychainAccount(provider.id)
-                        ) ?? "",
                         apiKind: provider.apiKind,
-                        isEnabled: provider.isEnabled,
-                        isAutomaticAccountRoutingEnabled: provider.isAutomaticAccountRoutingEnabled ?? false
+                        isEnabled: provider.isEnabled
                     )
                 },
                 refreshIntervalMinutes: min(60, max(1, persisted.refreshIntervalMinutes)),
@@ -107,120 +80,36 @@ public struct CredentialStore: @unchecked Sendable {
     }
 
     public func save(_ configuration: BigrouteConfiguration) throws {
-        try Self.persistenceLock.withLock {
-            try saveLocked(configuration)
-        }
-    }
-
-    private func saveLocked(_ configuration: BigrouteConfiguration) throws {
-        guard Set(configuration.providers.map(\.id)).count == configuration.providers.count else {
-            throw CredentialStoreError.duplicateProviderID
-        }
-        let previousProviders = loadPersisted()?.providers ?? []
-        let previousProvidersByID = Dictionary(
-            previousProviders.map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        let previousProviderIDs = Set(previousProviders.map(\.id))
-        let previousSecretsByID = Dictionary(
-            uniqueKeysWithValues: previousProviderIDs.map { providerID in
-                (providerID, PersistedSecrets(
-                    apiKey: Keychain.value(for: Self.keychainAccount(providerID)) ?? "",
-                    dashboardPassword: Keychain.value(
-                        for: Self.dashboardPasswordKeychainAccount(providerID)
-                    ) ?? ""
-                ))
-            }
-        )
-        let currentProvidersByID = Dictionary(
-            configuration.providers.map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let previousProviderIDs = Set(loadPersisted()?.providers.map(\.id) ?? [])
         let providers = configuration.providers.map {
             PersistedProvider(
                 id: $0.id,
                 name: $0.name.trimmingCharacters(in: .whitespacesAndNewlines),
                 endpoint: $0.endpoint.trimmingCharacters(in: .whitespacesAndNewlines),
                 apiKind: $0.apiKind,
-                isEnabled: $0.isEnabled,
-                isAutomaticAccountRoutingEnabled: $0.isAutomaticAccountRoutingEnabled
+                isEnabled: $0.isEnabled
             )
         }
 
+        // Write credentials first so a failed metadata write never loses a key.
+        for provider in configuration.providers {
+            try Keychain.save(provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines), for: Self.keychainAccount(provider.id))
+        }
+
         let settings = PersistedSettings(
-            schemaVersion: 4,
+            schemaVersion: 5,
             providers: providers,
             refreshIntervalMinutes: min(60, max(1, configuration.refreshIntervalMinutes)),
             sortOrder: configuration.sortOrder
         )
         let data = try JSONEncoder().encode(settings)
-
-        // Prepare all throwable metadata work before touching Keychain, then
-        // roll back any credentials already changed if a later write fails.
-        var changedAPIKeyProviderIDs: [UUID] = []
-        var changedPasswordProviderIDs: [UUID] = []
-        do {
-            for provider in configuration.providers {
-                let previousSecrets = previousSecretsByID[provider.id]
-                    ?? PersistedSecrets(apiKey: "", dashboardPassword: "")
-                let newAPIKey = provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                if previousSecrets.apiKey != newAPIKey {
-                    try Keychain.save(newAPIKey, for: Self.keychainAccount(provider.id))
-                    changedAPIKeyProviderIDs.append(provider.id)
-                }
-                if previousSecrets.dashboardPassword != provider.dashboardPassword {
-                    try Keychain.save(
-                        provider.dashboardPassword,
-                        for: Self.dashboardPasswordKeychainAccount(provider.id)
-                    )
-                    changedPasswordProviderIDs.append(provider.id)
-                }
-            }
-        } catch {
-            var rollbackFailed = false
-            for providerID in changedPasswordProviderIDs.reversed() {
-                do {
-                    try Keychain.save(
-                        previousSecretsByID[providerID]?.dashboardPassword ?? "",
-                        for: Self.dashboardPasswordKeychainAccount(providerID)
-                    )
-                } catch {
-                    rollbackFailed = true
-                }
-            }
-            for providerID in changedAPIKeyProviderIDs.reversed() {
-                do {
-                    try Keychain.save(
-                        previousSecretsByID[providerID]?.apiKey ?? "",
-                        for: Self.keychainAccount(providerID)
-                    )
-                } catch {
-                    rollbackFailed = true
-                }
-            }
-            if rollbackFailed { throw CredentialStoreError.credentialRollbackFailed }
-            throw error
-        }
-
         defaults.set(data, forKey: v2ConfigKey)
 
         let currentIDs = Set(providers.map(\.id))
         for removed in previousProviderIDs.subtracting(currentIDs) {
             Keychain.delete(for: Self.keychainAccount(removed))
-            Keychain.delete(for: Self.dashboardPasswordKeychainAccount(removed))
-            defaults.removeObject(forKey: Self.automationStateKey(removed))
-        }
-        for provider in providers {
-            guard let currentProvider = currentProvidersByID[provider.id] else { continue }
-            if Self.shouldRelinquishAutomationOwnership(
-                previous: previousProvidersByID[provider.id],
-                current: provider,
-                previousSecrets: previousSecretsByID[provider.id],
-                currentAPIKey: currentProvider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
-                currentDashboardPassword: currentProvider.dashboardPassword
-            ) {
-                defaults.removeObject(forKey: Self.automationStateKey(provider.id))
-            }
+            Keychain.delete(for: Self.retiredDashboardPasswordAccount(removed))
+            defaults.removeObject(forKey: Self.retiredAutomationStateKey(removed))
         }
     }
 
@@ -228,110 +117,35 @@ public struct CredentialStore: @unchecked Sendable {
         "provider.\(providerID.uuidString).apiKey"
     }
 
-    public static func dashboardPasswordKeychainAccount(_ providerID: UUID) -> String {
-        "provider.\(providerID.uuidString).dashboardPassword"
-    }
-
-    public func loadNineRouterAutomationState(for providerID: UUID) -> NineRouterAutomationState {
-        Self.persistenceLock.withLock {
-            guard let data = defaults.data(forKey: Self.automationStateKey(providerID)),
-                  let state = try? JSONDecoder().decode(NineRouterAutomationState.self, from: data) else {
-                return .empty
-            }
-            return state
-        }
-    }
-
-    public func saveNineRouterAutomationState(
-        _ state: NineRouterAutomationState,
-        for providerID: UUID,
-        expectedProvider: CustomQuotaProvider? = nil
-    ) throws {
-        try Self.persistenceLock.withLock {
-            let key = Self.automationStateKey(providerID)
-            if let expectedProvider {
-                guard let persisted = loadPersisted()?.providers.first(where: { $0.id == providerID }),
-                      Self.matchesAutomationScope(
-                          persisted,
-                          expected: expectedProvider,
-                          state: state
-                      ) else {
-                    // A cancelled refresh must never delete or overwrite state
-                    // written by a newer provider configuration.
-                    throw NineRouterAutomationError.statePersistenceFailed
-                }
-            }
-            guard !state.autoDisabledConnectionIDs.isEmpty else {
-                defaults.removeObject(forKey: key)
-                return
-            }
-            defaults.set(try JSONEncoder().encode(state), forKey: key)
-        }
-    }
-
-    private static func automationStateKey(_ providerID: UUID) -> String {
-        "routerQuota.nineRouterAutomationState.\(providerID.uuidString).v1"
-    }
-
-    private static func shouldRelinquishAutomationOwnership(
-        previous: PersistedProvider?,
-        current: PersistedProvider,
-        previousSecrets: PersistedSecrets?,
-        currentAPIKey: String,
-        currentDashboardPassword: String
-    ) -> Bool {
-        guard current.isEnabled,
-              current.apiKind == .nineRouter,
-              current.isAutomaticAccountRoutingEnabled == true,
-              let previous,
-              let previousSecrets,
-              previous.isEnabled,
-              previous.apiKind == .nineRouter,
-              previous.isAutomaticAccountRoutingEnabled == true,
-              previousSecrets.apiKey == currentAPIKey,
-              previousSecrets.dashboardPassword == currentDashboardPassword,
-              let previousIdentity = managementEndpointIdentity(for: previous.endpoint),
-              let currentIdentity = managementEndpointIdentity(for: current.endpoint) else {
-            return true
-        }
-        return previousIdentity != currentIdentity
-    }
-
-    private static func matchesAutomationScope(
-        _ persisted: PersistedProvider,
-        expected: CustomQuotaProvider,
-        state: NineRouterAutomationState
-    ) -> Bool {
-        guard persisted.id == expected.id,
-              persisted.isEnabled,
-              expected.isEnabled,
-              persisted.apiKind == .nineRouter,
-              expected.apiKind == .nineRouter,
-              persisted.isAutomaticAccountRoutingEnabled == true,
-              expected.isAutomaticAccountRoutingEnabled,
-              let persistedIdentity = managementEndpointIdentity(for: persisted.endpoint),
-              let expectedIdentity = managementEndpointIdentity(for: expected.endpoint),
-              persistedIdentity == expectedIdentity,
-              state.managementEndpointIdentity == expectedIdentity else {
-            return false
-        }
-        return (Keychain.value(for: keychainAccount(expected.id)) ?? "")
-            == expected.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            && (Keychain.value(for: dashboardPasswordKeychainAccount(expected.id)) ?? "")
-            == expected.dashboardPassword
-    }
-
-    private static func managementEndpointIdentity(for endpoint: String) -> String? {
-        guard let normalized = try? RouterEndpoint.normalizedURL(from: endpoint),
-              let management = try? NineRouterAutomationService.managementBaseURL(from: normalized) else {
-            return nil
-        }
-        return management.absoluteString
-    }
-
     private func loadPersisted() -> PersistedSettings? {
         guard let data = defaults.data(forKey: v2ConfigKey) else { return nil }
         return try? JSONDecoder().decode(PersistedSettings.self, from: data)
+    }
+
+    /// Automatic routing was retired in 1.2.2. Normalize the persisted JSON
+    /// before startup so even a later downgrade cannot silently re-enable it.
+    private func removeRetiredAutomaticRoutingData(from persisted: PersistedSettings) {
+        let normalized = PersistedSettings(
+            schemaVersion: 5,
+            providers: persisted.providers,
+            refreshIntervalMinutes: min(60, max(1, persisted.refreshIntervalMinutes)),
+            sortOrder: persisted.sortOrder
+        )
+        if let data = try? JSONEncoder().encode(normalized) {
+            defaults.set(data, forKey: v2ConfigKey)
+        }
+        for provider in persisted.providers {
+            Keychain.delete(for: Self.retiredDashboardPasswordAccount(provider.id))
+            defaults.removeObject(forKey: Self.retiredAutomationStateKey(provider.id))
+        }
+    }
+
+    private static func retiredDashboardPasswordAccount(_ providerID: UUID) -> String {
+        "provider.\(providerID.uuidString).dashboardPassword"
+    }
+
+    private static func retiredAutomationStateKey(_ providerID: UUID) -> String {
+        "routerQuota.nineRouterAutomationState.\(providerID.uuidString).v1"
     }
 
     private func migrateLegacy() -> BigrouteConfiguration {

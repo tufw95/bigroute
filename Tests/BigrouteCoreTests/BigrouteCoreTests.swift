@@ -152,294 +152,62 @@ import Testing
     let provider = CustomQuotaProvider(
         name: "Private Router",
         endpoint: "https://router.example.com",
-        apiKey: "super-secret-value",
-        dashboardPassword: "dashboard-secret",
-        isAutomaticAccountRoutingEnabled: true
+        apiKey: "super-secret-value"
     )
     let data = try JSONEncoder().encode(provider)
     let encoded = try #require(String(data: data, encoding: .utf8))
     #expect(!encoded.contains("super-secret-value"))
-    #expect(!encoded.contains("dashboard-secret"))
 
     let decoded = try JSONDecoder().decode(CustomQuotaProvider.self, from: data)
     #expect(decoded.apiKey.isEmpty)
-    #expect(decoded.dashboardPassword.isEmpty)
     #expect(decoded.name == provider.name)
-    #expect(decoded.isAutomaticAccountRoutingEnabled)
 }
 
-@Test func customProviderBackwardDecodingKeepsAutomationOff() throws {
-    let data = Data(#"{"id":"CE54A6AF-C623-480B-8C8A-87833C47F67E","name":"9Router","endpoint":"https://router.example.com","apiKind":"nineRouter","isEnabled":true}"#.utf8)
-    let provider = try JSONDecoder().decode(CustomQuotaProvider.self, from: data)
-    #expect(!provider.isAutomaticAccountRoutingEnabled)
-    #expect(provider.dashboardPassword.isEmpty)
-}
-
-@Test func credentialStoreBackwardDecodingKeepsAutomationOff() throws {
+@Test func retiredAutomaticRoutingConfigurationIsNormalizedLocally() throws {
     let suiteName = "BigrouteTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
     let providerID = UUID()
-    let data = Data(#"{"schemaVersion":3,"providers":[{"id":"\#(providerID.uuidString)","name":"9Router","endpoint":"https://router.example.com","apiKind":"nineRouter","isEnabled":true}],"refreshIntervalMinutes":2,"sortOrder":"quotaDescending"}"#.utf8)
-    defaults.set(data, forKey: "routerQuota.configuration.v2")
-
-    let provider = try #require(CredentialStore(defaults: defaults).load().providers.first)
-    #expect(!provider.isAutomaticAccountRoutingEnabled)
-    #expect(provider.dashboardPassword.isEmpty)
-}
-
-@Test func nineRouterAutomationStateRoundTripIsProviderScoped() throws {
-    let suiteName = "BigrouteTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let store = CredentialStore(defaults: defaults)
-    let firstProviderID = UUID()
-    let secondProviderID = UUID()
-    let state = NineRouterAutomationState(autoDisabledConnectionIDs: ["connection-a", "connection-b"])
-
-    try store.saveNineRouterAutomationState(state, for: firstProviderID)
-    #expect(store.loadNineRouterAutomationState(for: firstProviderID) == state)
-    #expect(store.loadNineRouterAutomationState(for: secondProviderID) == .empty)
-
-    try store.saveNineRouterAutomationState(.empty, for: firstProviderID)
-    #expect(store.loadNineRouterAutomationState(for: firstProviderID) == .empty)
-}
-
-@Test func nineRouterAutomationStateKeepsResetMarkersAndReadsLegacyState() throws {
-    let state = NineRouterAutomationState(
-        autoDisabledConnectionIDs: ["connection-a"],
-        managementEndpointIdentity: "https://router.example.com",
-        deactivationWindows: ["connection-a": ["session": "2026-08-08T16:00:00Z"]]
-    )
-    let encoded = try JSONEncoder().encode(state)
-    #expect(try JSONDecoder().decode(NineRouterAutomationState.self, from: encoded) == state)
-
-    let legacy = Data(#"{"autoDisabledConnectionIDs":["connection-a"],"managementEndpointIdentity":"https://router.example.com"}"#.utf8)
-    let decodedLegacy = try JSONDecoder().decode(NineRouterAutomationState.self, from: legacy)
-    #expect(decodedLegacy.autoDisabledConnectionIDs == ["connection-a"])
-    #expect(decodedLegacy.deactivationWindows.isEmpty)
-}
-
-@Test func removingProviderDeletesNineRouterAutomationState() throws {
-    let suiteName = "BigrouteTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let providerID = UUID()
-    let persisted = Data(#"{"schemaVersion":3,"providers":[{"id":"\#(providerID.uuidString)","name":"9Router","endpoint":"https://router.example.com","apiKind":"nineRouter","isEnabled":true}],"refreshIntervalMinutes":2,"sortOrder":"quotaDescending"}"#.utf8)
+    let stateKey = "routerQuota.nineRouterAutomationState.\(providerID.uuidString).v1"
+    let persisted = Data(#"{"schemaVersion":4,"providers":[{"id":"\#(providerID.uuidString)","name":"9Router","endpoint":"https://router.example.com","apiKind":"nineRouter","isEnabled":true,"isAutomaticAccountRoutingEnabled":true}],"refreshIntervalMinutes":2,"sortOrder":"quotaDescending"}"#.utf8)
     defaults.set(persisted, forKey: "routerQuota.configuration.v2")
-    let store = CredentialStore(defaults: defaults)
-    try store.saveNineRouterAutomationState(
-        NineRouterAutomationState(autoDisabledConnectionIDs: ["connection-a"]),
-        for: providerID
-    )
+    defaults.set(Data(#"{"autoDisabledConnectionIDs":["account-1"]}"#.utf8), forKey: stateKey)
 
-    try store.save(.defaults)
+    let configuration = CredentialStore(defaults: defaults).load()
+    #expect(configuration.providers.count == 1)
+    #expect(configuration.providers[0].apiKind == .nineRouter)
+    #expect(defaults.data(forKey: stateKey) == nil)
 
-    #expect(store.loadNineRouterAutomationState(for: providerID) == .empty)
+    let normalized = try #require(defaults.data(forKey: "routerQuota.configuration.v2"))
+    let normalizedObject = try #require(JSONSerialization.jsonObject(with: normalized) as? [String: Any])
+    #expect(normalizedObject["schemaVersion"] as? Int == 5)
+    let normalizedText = try #require(String(data: normalized, encoding: .utf8))
+    #expect(!normalizedText.contains("isAutomaticAccountRoutingEnabled"))
+
+    defaults.removePersistentDomain(forName: suiteName)
 }
 
-@Test func disablingAutomaticRoutingRelinquishesNineRouterAutomationState() throws {
-    let suiteName = "BigrouteTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let store = CredentialStore(defaults: defaults)
-    var provider = automaticRoutingProvider()
+@Test func customQuotaServiceUsesOnlyReadOnlyQuotaRequests() async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [ReadOnlyQuotaURLProtocol.self]
+    let session = URLSession(configuration: configuration)
+    ReadOnlyQuotaURLProtocol.reset(response: Data(#"{"object":"quota","generatedAt":"2026-08-10T00:00:00Z","summary":{"accounts":1,"availableAccounts":1,"unavailableAccounts":0,"lowestRemaining":75},"data":[{"id":"account-1","provider":"codex","name":"Office","plan":"plus","limitReached":false,"quotas":[],"resetCredits":{"availableCount":0},"status":"available"}]}"#.utf8))
 
-    try store.save(BigrouteConfiguration(providers: [provider]))
-    try store.saveNineRouterAutomationState(
-        NineRouterAutomationState(autoDisabledConnectionIDs: ["connection-a"]),
-        for: provider.id
-    )
-    provider.isAutomaticAccountRoutingEnabled = false
-
-    try store.save(BigrouteConfiguration(providers: [provider]))
-
-    #expect(store.loadNineRouterAutomationState(for: provider.id) == .empty)
-}
-
-@Test func disablingProviderRelinquishesNineRouterAutomationState() throws {
-    let suiteName = "BigrouteTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let store = CredentialStore(defaults: defaults)
-    var provider = automaticRoutingProvider()
-
-    try store.save(BigrouteConfiguration(providers: [provider]))
-    try store.saveNineRouterAutomationState(
-        NineRouterAutomationState(autoDisabledConnectionIDs: ["connection-a"]),
-        for: provider.id
-    )
-    provider.isEnabled = false
-
-    try store.save(BigrouteConfiguration(providers: [provider]))
-
-    #expect(store.loadNineRouterAutomationState(for: provider.id) == .empty)
-}
-
-@Test func changingRouterEndpointRelinquishesNineRouterAutomationState() throws {
-    let suiteName = "BigrouteTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let store = CredentialStore(defaults: defaults)
-    var provider = automaticRoutingProvider(
-        endpoint: "https://router.example.com/team/api/v1/quota"
-    )
-
-    try store.save(BigrouteConfiguration(providers: [provider]))
-    let state = NineRouterAutomationState(autoDisabledConnectionIDs: ["connection-a"])
-    try store.saveNineRouterAutomationState(state, for: provider.id)
-
-    provider.endpoint = "https://router.example.com/team/v1/quota"
-    try store.save(BigrouteConfiguration(providers: [provider]))
-    #expect(store.loadNineRouterAutomationState(for: provider.id) == state)
-
-    provider.endpoint = "https://other-router.example.com/team/v1/quota"
-    try store.save(BigrouteConfiguration(providers: [provider]))
-    #expect(store.loadNineRouterAutomationState(for: provider.id) == .empty)
-}
-
-@Test func changingProviderCredentialsRelinquishesNineRouterAutomationState() throws {
-    let suiteName = "BigrouteTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let store = CredentialStore(defaults: defaults)
-    var provider = automaticRoutingProvider()
-    provider.apiKey = "api-key-a"
-    provider.dashboardPassword = "dashboard-password-a"
-    defer { try? store.save(.defaults) }
-
-    try store.save(BigrouteConfiguration(providers: [provider]))
-    let state = NineRouterAutomationState(
-        autoDisabledConnectionIDs: ["connection-a"],
-        managementEndpointIdentity: "https://router.example.com",
-        deactivationWindows: ["connection-a": ["session": "2026-08-08T16:00:00Z"]]
-    )
-    try store.saveNineRouterAutomationState(state, for: provider.id)
-
-    provider.name = "Renamed"
-    try store.save(BigrouteConfiguration(providers: [provider]))
-    #expect(store.loadNineRouterAutomationState(for: provider.id) == state)
-
-    provider.apiKey = "api-key-b"
-    try store.save(BigrouteConfiguration(providers: [provider]))
-    #expect(store.loadNineRouterAutomationState(for: provider.id) == .empty)
-
-    try store.saveNineRouterAutomationState(state, for: provider.id)
-    provider.dashboardPassword = "dashboard-password-b"
-    try store.save(BigrouteConfiguration(providers: [provider]))
-    #expect(store.loadNineRouterAutomationState(for: provider.id) == .empty)
-}
-
-@Test func duplicateProviderIdentifiersFailClosed() throws {
-    let suiteName = "BigrouteTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let providerID = UUID()
-    let persisted = Data(
-        #"{"schemaVersion":4,"providers":[{"id":"\#(providerID.uuidString)","name":"First","endpoint":"https://router.example.com","apiKind":"nineRouter","isEnabled":true,"isAutomaticAccountRoutingEnabled":false},{"id":"\#(providerID.uuidString)","name":"Duplicate","endpoint":"https://other.example.com","apiKind":"nineRouter","isEnabled":true,"isAutomaticAccountRoutingEnabled":false}],"refreshIntervalMinutes":2,"sortOrder":"quotaDescending"}"#.utf8
-    )
-    defaults.set(persisted, forKey: "routerQuota.configuration.v2")
-    let store = CredentialStore(defaults: defaults)
-
-    #expect(store.load().providers.map(\.name) == ["First"])
-
-    let duplicate = CustomQuotaProvider(
-        id: providerID,
-        name: "Duplicate",
-        endpoint: "https://other.example.com",
+    let provider = CustomQuotaProvider(
+        name: "9Router",
+        endpoint: "https://router.example.com/internal",
+        apiKey: "test-key",
         apiKind: .nineRouter
     )
-    #expect(throws: CredentialStoreError.duplicateProviderID) {
-        try store.save(BigrouteConfiguration(providers: [
-            automaticRoutingProvider(),
-            duplicate,
-            CustomQuotaProvider(
-                id: duplicate.id,
-                name: "Same ID",
-                endpoint: "https://third.example.com",
-                apiKind: .nineRouter
-            )
-        ]))
-    }
-}
+    let accounts = try await CustomQuotaService(session: session).fetch(provider: provider)
+    #expect(accounts.count == 1)
 
-@Test func staleRefreshCannotRestoreOwnershipAfterAutomationIsDisabled() throws {
-    let suiteName = "BigrouteTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let store = CredentialStore(defaults: defaults)
-    var provider = automaticRoutingProvider()
-
-    try store.save(BigrouteConfiguration(providers: [provider]))
-    let staleProvider = provider
-    provider.isAutomaticAccountRoutingEnabled = false
-    try store.save(BigrouteConfiguration(providers: [provider]))
-
-    #expect(throws: NineRouterAutomationError.statePersistenceFailed) {
-        try store.saveNineRouterAutomationState(
-            NineRouterAutomationState(
-                autoDisabledConnectionIDs: ["connection-a"],
-                managementEndpointIdentity: "https://router.example.com"
-            ),
-            for: staleProvider.id,
-            expectedProvider: staleProvider
-        )
-    }
-    #expect(store.loadNineRouterAutomationState(for: provider.id) == .empty)
-}
-
-@Test func mismatchedAutomationStateCannotBePersistedForAnEndpoint() throws {
-    let suiteName = "BigrouteTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let store = CredentialStore(defaults: defaults)
-    let provider = automaticRoutingProvider()
-    try store.save(BigrouteConfiguration(providers: [provider]))
-
-    #expect(throws: NineRouterAutomationError.statePersistenceFailed) {
-        try store.saveNineRouterAutomationState(
-            NineRouterAutomationState(
-                autoDisabledConnectionIDs: ["connection-a"],
-                managementEndpointIdentity: "https://other-router.example.com"
-            ),
-            for: provider.id,
-            expectedProvider: provider
-        )
-    }
-    #expect(store.loadNineRouterAutomationState(for: provider.id) == .empty)
-}
-
-@Test func staleRefreshCannotDeleteOwnershipFromANewerEndpoint() throws {
-    let suiteName = "BigrouteTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let store = CredentialStore(defaults: defaults)
-    let staleProvider = automaticRoutingProvider(endpoint: "https://old-router.example.com")
-    var currentProvider = staleProvider
-    currentProvider.endpoint = "https://new-router.example.com"
-
-    try store.save(BigrouteConfiguration(providers: [staleProvider]))
-    try store.save(BigrouteConfiguration(providers: [currentProvider]))
-    let currentState = NineRouterAutomationState(
-        autoDisabledConnectionIDs: ["new-connection"],
-        managementEndpointIdentity: "https://new-router.example.com"
-    )
-    try store.saveNineRouterAutomationState(
-        currentState,
-        for: currentProvider.id,
-        expectedProvider: currentProvider
-    )
-
-    #expect(throws: NineRouterAutomationError.statePersistenceFailed) {
-        try store.saveNineRouterAutomationState(
-            NineRouterAutomationState(
-                managementEndpointIdentity: "https://old-router.example.com"
-            ),
-            for: staleProvider.id,
-            expectedProvider: staleProvider
-        )
-    }
-    #expect(store.loadNineRouterAutomationState(for: currentProvider.id) == currentState)
+    let requests = ReadOnlyQuotaURLProtocol.requestsSnapshot()
+    #expect(requests.count == 1)
+    #expect(requests.allSatisfy { $0.httpMethod == "GET" })
+    #expect(requests.allSatisfy { request in
+        let path = request.url?.path ?? ""
+        return !path.contains("/api/auth/login") && !path.contains("/api/providers")
+    })
 }
 
 @Test func quotaIndicatorBandsMatchDisplayedPercentages() {
@@ -449,17 +217,6 @@ import Testing
     #expect(QuotaIndicatorBand(remaining: 20.5) == .warning)
     #expect(QuotaIndicatorBand(remaining: 70.4) == .warning)
     #expect(QuotaIndicatorBand(remaining: 70.5) == .healthy)
-}
-
-private func automaticRoutingProvider(
-    endpoint: String = "https://router.example.com"
-) -> CustomQuotaProvider {
-    CustomQuotaProvider(
-        name: "9Router",
-        endpoint: endpoint,
-        apiKind: .nineRouter,
-        isAutomaticAccountRoutingEnabled: true
-    )
 }
 
 @Test func providerSnapshotKeepsIndependentFreshness() {
@@ -484,4 +241,48 @@ private func automaticRoutingProvider(
     #expect(!imported.accounts.isEmpty)
     #expect(!imported.accounts(for: LegacyProviderID.nineRouter).isEmpty)
     #expect(!imported.accounts(for: LegacyProviderID.omniRouter).isEmpty)
+}
+
+private final class ReadOnlyQuotaURLProtocol: URLProtocol {
+    nonisolated(unsafe) private static var requests: [URLRequest] = []
+    nonisolated(unsafe) private static var response = Data()
+    private static let lock = NSLock()
+
+    static func reset(response: Data) {
+        lock.withLock {
+            requests = []
+            self.response = response
+        }
+    }
+
+    static func requestsSnapshot() -> [URLRequest] {
+        lock.withLock { requests }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        var responseData = Data()
+        Self.lock.withLock {
+            Self.requests.append(request)
+            responseData = Self.response
+        }
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+              ) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: responseData)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

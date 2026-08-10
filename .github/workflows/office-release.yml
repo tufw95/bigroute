@@ -64,6 +64,9 @@ jobs:
           echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
           echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
 
+      - name: Verify monitoring-only source
+        run: ./scripts/verify_monitoring_only.sh
+
       - name: Run tests
         run: swift test
 
@@ -238,6 +241,8 @@ jobs:
 
           This build is distributed for internal office use and is authenticated by a Sparkle Ed25519 signature.
 
+          Automatic Account Routing is not included. Bigroute is a monitoring-only client: it reads configured quota endpoints but never logs into the 9Router dashboard or activates/deactivates accounts. The upgrade only removes obsolete routing credentials and state from this Mac. It sends no migration request to 9Router and leaves all existing account states unchanged. Please review manually any accounts that an older build may have left inactive.
+
           It uses a persistent internal code-signing certificate and is not Apple notarized. Because that certificate has no Apple Team ID, the office build intentionally does not enable Hardened Runtime library validation; Sparkle Ed25519 signatures still authenticate every OTA update. The first installation may require **Privacy & Security > Open Anyway**. Once installed, later office releases update automatically through Bigroute.
 
           Existing Router Quota 1.0.2 users should update from inside the app. For a manual upgrade, quit Router Quota and remove `/Applications/Router Quota.app` before installing Bigroute so macOS does not retain two widgets with the same compatibility identifier.
@@ -272,7 +277,7 @@ jobs:
           set -euo pipefail
           channel_tag="office-channel"
           channel_title="Bigroute Office Update Channel"
-          channel_notes="Signed Sparkle feed for installed office builds. Download installers from the latest numbered office release."
+          channel_notes="Signed Sparkle feed for monitoring-only Bigroute office builds. Download installers from the latest numbered office release."
           if ! gh release view "$channel_tag" >/dev/null 2>&1; then
             gh release create "$channel_tag" \
               --target "$GITHUB_SHA" \
