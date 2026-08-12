@@ -20,7 +20,7 @@ Include the affected version, macOS version, reproduction steps, expected impact
 
 Bigroute stores provider API keys in macOS Keychain. Widget snapshots contain quota display data but never API keys. Release signing certificates, provisioning profiles, notarization passwords, and the Sparkle EdDSA private key must remain in protected GitHub Actions secrets and must never be committed.
 
-Bigroute is a read-only quota monitor. It does not store 9Router dashboard passwords, authenticate to dashboard management endpoints, or change provider account activation state. Upgrading from an older build removes those retired local credentials and ownership markers without sending a request to the router.
+Bigroute does not store 9Router dashboard passwords or authenticate to dashboard management endpoints. Scheduled refreshes and WidgetKit are read-only. The only account mutations are the two visible 9Router actions initiated and confirmed by a user; the server returns a short-lived preview token and revalidates quota immediately before applying it. Upgrading from an older build removes retired automation credentials and ownership markers without sending a request to the router.
 
 Office releases use a pinned, persistent self-signed code-signing certificate and are not Apple notarized. Since that certificate has no Apple Team ID, office artifacts intentionally do not enable Hardened Runtime library validation; enabling it would prevent macOS from loading the embedded Sparkle framework. Their update ZIP and dedicated office appcast are still authenticated with the embedded Sparkle Ed25519 public key. Users must download the first installer only from this repository and verify that subsequent updates are presented by Bigroute itself.
 

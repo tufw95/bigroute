@@ -9,13 +9,24 @@ if [[ -e Sources/BigrouteCore/NineRouterAutomation.swift ]]; then
   exit 1
 fi
 
-# Keep the app's provider requests read-only. These checks intentionally cover
-# both the old service names and every mutating HTTP verb used by URLSession.
+# Account state changes are allowed only through the explicit, user-confirmed
+# quota endpoint client. Background automation and dashboard management stay banned.
 if rg -n -S \
-  'NineRouterAutomation|isAutomaticAccountRoutingEnabled|/api/auth/login|/api/providers(/|")|httpMethod[[:space:]]*=[[:space:]]*"(POST|PUT|PATCH|DELETE)"' \
+  'NineRouterAutomation|isAutomaticAccountRoutingEnabled|/api/auth/login|/api/providers(/|")|httpMethod[[:space:]]*=[[:space:]]*"(PUT|PATCH|DELETE)"' \
   Sources; then
-  echo "Monitoring-only source contains a retired routing or mutating request path." >&2
+  echo "Source contains retired automation or a direct dashboard mutation path." >&2
   exit 1
 fi
 
-echo "Monitoring-only source verification passed."
+unexpected_post_lines="$(
+  rg -n -S 'httpMethod[[:space:]]*=[[:space:]]*"POST"' Sources \
+    | rg -v '^Sources/BigrouteCore/ManualAccountRouting\.swift:' \
+    || true
+)"
+if [[ -n "$unexpected_post_lines" ]]; then
+  printf '%s\n' "$unexpected_post_lines"
+  echo "POST requests are allowed only in ManualAccountRouting.swift." >&2
+  exit 1
+fi
+
+echo "No background routing or direct dashboard mutation paths found."

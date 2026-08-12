@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-12
+
+### Added
+
+- Added explicit **Turn Off Empty** and **Turn On Available** actions for providers configured as 9Router.
+- Added a server-side preview and confirmation flow that inspects every Codex OAuth account, keeps internal account IDs private, and revalidates quota and account state immediately before each change.
+- Added a provider type selector so custom providers can opt into the 9Router actions without affecting Auto-detect or OmniRouter providers.
+
+### Security
+
+- Kept scheduled refreshes, WidgetKit, and provider detection read-only; account state can change only after a visible user action and confirmation.
+- Added short-lived, single-use preview tokens, an in-process mutation lock, fail-closed quota checks, and per-account skip handling.
+
 ## [1.2.2] - 2026-08-10
 
 ### Removed
@@ -90,7 +103,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.2.2...HEAD
+[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.3.0...HEAD
+[1.3.0]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.0
 [1.2.2]: https://github.com/tufw95/bigroute/releases/tag/office-v1.2.2
 [1.2.1]: https://github.com/tufw95/bigroute/releases/tag/office-v1.2.1
 [1.1.2]: https://github.com/tufw95/bigroute/releases/tag/office-v1.1.2

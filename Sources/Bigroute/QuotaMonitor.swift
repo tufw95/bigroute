@@ -22,7 +22,9 @@ final class QuotaMonitor {
     var snapshot: BigrouteSnapshot
     var selectedProviderID: UUID?
     var isRefreshing = false
+    var isRunningManualAction = false
     var errorMessage: String?
+    var manualActionMessage: String?
 
     private let credentialStore = CredentialStore()
     private let snapshotStore = SharedQuotaStore()
@@ -101,6 +103,41 @@ final class QuotaMonitor {
     func selectProvider(id: UUID) {
         guard enabledProviders.contains(where: { $0.id == id }) else { return }
         selectedProviderID = id
+        manualActionMessage = nil
+    }
+
+    func previewManualAction(
+        _ action: NineRouterAccountAction,
+        provider: CustomQuotaProvider
+    ) async throws -> NineRouterRoutingPreview {
+        guard !isRunningManualAction else {
+            throw ManualActionError("Another account action is already running.")
+        }
+        isRunningManualAction = true
+        manualActionMessage = nil
+        defer { isRunningManualAction = false }
+        return try await NineRouterManualRoutingService().preview(action: action, provider: provider)
+    }
+
+    func applyManualAction(
+        _ preview: NineRouterRoutingPreview,
+        provider: CustomQuotaProvider
+    ) async throws -> NineRouterRoutingResult {
+        guard !isRunningManualAction else {
+            throw ManualActionError("Another account action is already running.")
+        }
+        isRunningManualAction = true
+        manualActionMessage = nil
+        defer { isRunningManualAction = false }
+        let result = try await NineRouterManualRoutingService().apply(
+            preview: preview,
+            provider: provider
+        )
+        manualActionMessage = result.changedCount == 1
+            ? "Updated 1 account."
+            : "Updated \(result.changedCount) accounts."
+        refresh(force: true)
+        return result
     }
 
     func refresh(force: Bool = false) {
@@ -258,6 +295,12 @@ final class QuotaMonitor {
 }
 
 private struct ConfigurationError: LocalizedError {
+    let message: String
+    init(_ message: String) { self.message = message }
+    var errorDescription: String? { message }
+}
+
+private struct ManualActionError: LocalizedError {
     let message: String
     init(_ message: String) { self.message = message }
     var errorDescription: String? { message }

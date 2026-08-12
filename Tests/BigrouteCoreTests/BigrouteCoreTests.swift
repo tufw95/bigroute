@@ -210,6 +210,55 @@ import Testing
     })
 }
 
+@Test func manualRoutingUsesOnlyTheQuotaEndpointAndPreviewToken() async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [ManualRoutingURLProtocol.self]
+    let session = URLSession(configuration: configuration)
+    ManualRoutingURLProtocol.reset(responses: [
+        Data(#"{"action":"turn_off_empty","previewToken":"one-time-token","createdAt":"2026-08-12T00:00:00Z","expiresAt":"2026-08-12T00:02:00Z","thresholdPercent":5,"inspectedCount":2,"skippedCount":0,"candidateCount":1,"candidates":[{"label":"Office","currentIsActive":true,"remainingPercent":0}]}"#.utf8),
+        Data(#"{"action":"turn_off_empty","changedCount":1,"skippedCount":0,"changed":[{"label":"Office","isActive":false}],"skipped":[]}"#.utf8)
+    ])
+    let provider = CustomQuotaProvider(
+        name: "9Router",
+        endpoint: "https://router.example.com/internal",
+        apiKey: "test-key",
+        apiKind: .nineRouter
+    )
+    let service = NineRouterManualRoutingService(session: session)
+
+    let preview = try await service.preview(action: .turnOffEmpty, provider: provider)
+    #expect(preview.previewToken == "one-time-token")
+    #expect(preview.candidateCount == 1)
+    let result = try await service.apply(preview: preview, provider: provider)
+    #expect(result.changedCount == 1)
+
+    let requests = ManualRoutingURLProtocol.requestsSnapshot()
+    #expect(requests.count == 2)
+    #expect(requests.allSatisfy { $0.request.httpMethod == "POST" })
+    #expect(requests.allSatisfy { $0.request.url?.path == "/internal/v1/quota" })
+    #expect(requests.allSatisfy { !($0.request.url?.path.contains("/api/providers") ?? false) })
+    let bodies = try requests.map { captured -> [String: Any] in
+        let body = try #require(captured.body)
+        return try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    }
+    #expect(bodies[0]["operation"] as? String == "preview")
+    #expect(bodies[0]["previewToken"] == nil)
+    #expect(bodies[1]["operation"] as? String == "apply")
+    #expect(bodies[1]["previewToken"] as? String == "one-time-token")
+}
+
+@Test func manualRoutingRejectsNonNineRouterProvidersBeforeNetwork() async {
+    let provider = CustomQuotaProvider(
+        name: "Omni",
+        endpoint: "https://router.example.com",
+        apiKey: "test-key",
+        apiKind: .omniRouter
+    )
+    await #expect(throws: NineRouterManualRoutingError.unsupportedProvider) {
+        try await NineRouterManualRoutingService().preview(action: .turnOffEmpty, provider: provider)
+    }
+}
+
 @Test func quotaIndicatorBandsMatchDisplayedPercentages() {
     #expect(QuotaIndicatorBand(remaining: nil) == .unavailable)
     #expect(QuotaIndicatorBand(remaining: .nan) == .unavailable)
@@ -285,4 +334,70 @@ private final class ReadOnlyQuotaURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+private final class ManualRoutingURLProtocol: URLProtocol {
+    private struct CapturedRequest: Sendable {
+        let request: URLRequest
+        let body: Data?
+    }
+
+    nonisolated(unsafe) private static var requests: [CapturedRequest] = []
+    nonisolated(unsafe) private static var responses: [Data] = []
+    private static let lock = NSLock()
+
+    static func reset(responses: [Data]) {
+        lock.withLock {
+            requests = []
+            self.responses = responses
+        }
+    }
+
+    static func requestsSnapshot() -> [(request: URLRequest, body: Data?)] {
+        lock.withLock { requests }
+            .map { (request: $0.request, body: $0.body) }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        var responseData = Data()
+        Self.lock.withLock {
+            Self.requests.append(CapturedRequest(
+                request: request,
+                body: request.httpBody ?? requestBody(from: request.httpBodyStream)
+            ))
+            if !Self.responses.isEmpty { responseData = Self.responses.removeFirst() }
+        }
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+              ) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: responseData)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    private func requestBody(from stream: InputStream?) -> Data? {
+        guard let stream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data.isEmpty ? nil : data
+    }
 }

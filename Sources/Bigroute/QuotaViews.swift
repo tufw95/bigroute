@@ -7,6 +7,9 @@ import SwiftUI
 struct DashboardView: View {
     @Environment(QuotaMonitor.self) private var monitor
     @Environment(UpdateController.self) private var updateController
+    @State private var routingPreview: NineRouterRoutingPreview?
+    @State private var manualActionError: String?
+    @State private var lastRoutingResult: NineRouterRoutingResult?
 
     private let contentWidth: CGFloat = 700
     private let minimumHeight: CGFloat = 220
@@ -22,6 +25,10 @@ struct DashboardView: View {
             Divider().opacity(0.5)
             if monitor.enabledProviders.count > 1 {
                 providerPicker
+            }
+            if supportsManualRouting {
+                manualRoutingBar
+                Divider().opacity(0.35)
             }
             if accounts.isEmpty {
                 ContentUnavailableView(
@@ -48,6 +55,28 @@ struct DashboardView: View {
         .frame(width: contentWidth, height: preferredHeight)
         .background(.regularMaterial)
         .animation(.snappy(duration: 0.2), value: preferredHeight)
+        .onChange(of: monitor.selectedProviderID) { _, _ in
+            routingPreview = nil
+            manualActionError = nil
+            lastRoutingResult = nil
+        }
+        .sheet(item: $routingPreview) { preview in
+            ManualRoutingConfirmationView(
+                providerName: currentProvider?.name ?? "9Router",
+                preview: preview,
+                isApplying: monitor.isRunningManualAction,
+                onCancel: { routingPreview = nil },
+                onConfirm: { apply(preview) }
+            )
+        }
+        .alert("Account Action Failed", isPresented: Binding(
+            get: { manualActionError != nil },
+            set: { if !$0 { manualActionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { manualActionError = nil }
+        } message: {
+            Text(manualActionError ?? "Unknown error")
+        }
     }
 
     private var accountGrid: some View {
@@ -62,7 +91,9 @@ struct DashboardView: View {
 
     private var preferredHeight: CGFloat {
         guard !accounts.isEmpty else {
-            return monitor.enabledProviders.count > 1 ? 324 : 280
+            let providerPickerHeight: CGFloat = monitor.enabledProviders.count > 1 ? 44 : 0
+            let routingHeight: CGFloat = supportsManualRouting ? 45 : 0
+            return 280 + providerPickerHeight + routingHeight
         }
         return min(maximumHeight, max(minimumHeight, naturalContentHeight))
     }
@@ -76,13 +107,71 @@ struct DashboardView: View {
         let rowGaps = CGFloat(max(0, Int(rowCount) - 1)) * 5
         let gridHeight = 7 + (rowCount * 36) + rowGaps + 8
         let providerPickerHeight: CGFloat = monitor.enabledProviders.count > 1 ? 44 : 0
-        let chromeHeight: CGFloat = 65 + 1 + providerPickerHeight + 38
+        let routingHeight: CGFloat = supportsManualRouting ? 45 : 0
+        let chromeHeight: CGFloat = 65 + 1 + providerPickerHeight + routingHeight + 38
         return chromeHeight + gridHeight
     }
 
     private var currentProvider: CustomQuotaProvider? {
         guard let id = monitor.selectedProviderID else { return monitor.enabledProviders.first }
         return monitor.enabledProviders.first(where: { $0.id == id }) ?? monitor.enabledProviders.first
+    }
+
+    private var supportsManualRouting: Bool {
+        currentProvider?.apiKind == .nineRouter
+    }
+
+    private var manualRoutingBar: some View {
+        HStack(spacing: 8) {
+            Label("Manual account actions", systemImage: "hand.tap")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button {
+                requestPreview(.turnOffEmpty)
+            } label: {
+                Label("Turn Off Empty", systemImage: NineRouterAccountAction.turnOffEmpty.systemImage)
+            }
+            .tint(.red)
+            Button {
+                requestPreview(.turnOnAvailable)
+            } label: {
+                Label("Turn On Available", systemImage: NineRouterAccountAction.turnOnAvailable.systemImage)
+            }
+            .tint(.green)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(monitor.isRunningManualAction)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
+    private func requestPreview(_ action: NineRouterAccountAction) {
+        guard let provider = currentProvider else { return }
+        Task {
+            do {
+                manualActionError = nil
+                lastRoutingResult = nil
+                routingPreview = try await monitor.previewManualAction(action, provider: provider)
+            } catch {
+                manualActionError = error.localizedDescription
+            }
+        }
+    }
+
+    private func apply(_ preview: NineRouterRoutingPreview) {
+        guard let provider = currentProvider else { return }
+        Task {
+            do {
+                manualActionError = nil
+                lastRoutingResult = try await monitor.applyManualAction(preview, provider: provider)
+                routingPreview = nil
+            } catch {
+                routingPreview = nil
+                manualActionError = error.localizedDescription
+            }
+        }
     }
 
     private var header: some View {
@@ -147,9 +236,15 @@ struct DashboardView: View {
 
     private var footer: some View {
         HStack(spacing: 6) {
-            if let error = monitor.errorMessage {
+            if let error = manualActionError ?? monitor.errorMessage {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text(error).lineLimit(1)
+            } else if let result = lastRoutingResult {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                Text("Updated \(result.changedCount), skipped \(result.skippedCount)")
+            } else if let message = monitor.manualActionMessage {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                Text(message)
             } else if let updatedAt = currentProvider.flatMap({ monitor.snapshot.provider(id: $0.id)?.updatedAt }) {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 Text("Updated \(EnglishRelativeTime.string(from: updatedAt))")
@@ -176,6 +271,98 @@ struct DashboardView: View {
     private var accounts: [CodexQuotaAccount] {
         guard let id = currentProvider?.id else { return [] }
         return monitor.configuration.sortOrder.sorted(monitor.snapshot.accounts(for: id))
+    }
+}
+
+private struct ManualRoutingConfirmationView: View {
+    let providerName: String
+    let preview: NineRouterRoutingPreview
+    let isApplying: Bool
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: preview.action.systemImage)
+                    .font(.title2)
+                    .foregroundStyle(preview.action == .turnOffEmpty ? .red : .green)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(preview.action.title)
+                        .font(.headline)
+                    Text(providerName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if preview.candidateCount == 0 {
+                ContentUnavailableView(
+                    "No Accounts to Change",
+                    systemImage: "checkmark.circle",
+                    description: Text(emptyDescription)
+                )
+                .frame(maxWidth: .infinity, minHeight: 140)
+            } else {
+                Text(summaryText)
+                    .font(.body)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 7) {
+                        ForEach(Array(preview.candidates.enumerated()), id: \.offset) { _, candidate in
+                            HStack {
+                                Image(systemName: candidate.remainingPercent <= preview.thresholdPercent ? "gauge.with.dots.needle.0percent" : "checkmark.circle")
+                                    .foregroundStyle(candidate.remainingPercent <= preview.thresholdPercent ? .red : .green)
+                                Text(candidate.label)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("\(candidate.remainingPercent)% remaining")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 10)
+                            .frame(height: 32)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 9))
+                        }
+                    }
+                }
+                .frame(maxHeight: 260)
+            }
+
+            if preview.skippedCount > 0 {
+                Text("\(preview.skippedCount) account(s) were skipped because fresh quota was unavailable. They will not be changed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Button("Cancel", action: onCancel)
+                Spacer()
+                Button(preview.action.title, action: onConfirm)
+                    .buttonStyle(.borderedProminent)
+                    .tint(preview.action == .turnOffEmpty ? .red : .green)
+                    .disabled(preview.candidateCount == 0 || isApplying)
+            }
+        }
+        .padding(20)
+        .frame(width: 470, height: preview.candidateCount == 0 ? 300 : 430)
+    }
+
+    private var summaryText: String {
+        switch preview.action {
+        case .turnOffEmpty:
+            "9Router will recheck and turn off \(preview.candidateCount) active account(s) whose quota is \(preview.thresholdPercent)% or lower."
+        case .turnOnAvailable:
+            "9Router will recheck and turn on \(preview.candidateCount) inactive account(s) that still have more than \(preview.thresholdPercent)% quota."
+        }
+    }
+
+    private var emptyDescription: String {
+        switch preview.action {
+        case .turnOffEmpty:
+            "No active Codex account has \(preview.thresholdPercent)% quota or less."
+        case .turnOnAvailable:
+            "No inactive Codex account currently has available quota."
+        }
     }
 }
 
@@ -305,7 +492,7 @@ struct SettingsView: View {
             } header: {
                 Text("Providers")
             } footer: {
-                Text("The app automatically recognizes 9Router and OmniRouter quota responses. API keys are stored in Keychain, and Bigroute never changes account state.")
+                Text("API keys are stored in Keychain. Scheduled refreshes and widgets are always read-only; 9Router account changes require an explicit preview and confirmation in the menu bar.")
             }
 
             Section("Display") {
@@ -448,6 +635,11 @@ private struct ProviderEditorView: View {
             Form {
                 Section("Provider") {
                     TextField("Name", text: $provider.name, prompt: Text("My Router"))
+                    Picker("Provider type", selection: $provider.apiKind) {
+                        ForEach(QuotaAPIKind.allCases, id: \.self) { kind in
+                            Text(kind.displayName).tag(kind)
+                        }
+                    }
                     TextField("Endpoint", text: $provider.endpoint, prompt: Text("https://router.example.com"))
                     SecureField("API key", text: $provider.apiKey)
                     Toggle("Enabled", isOn: $provider.isEnabled)
@@ -456,7 +648,7 @@ private struct ProviderEditorView: View {
                     Text("Endpoint can be a base URL or the complete /v1/quota or /api/usage/quota URL.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("Automatic detection supports the standard 9Router and OmniRouter response formats.")
+                    Text("Choose 9Router to enable the two manual account actions. Auto-detect and OmniRouter remain quota-monitoring only.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
