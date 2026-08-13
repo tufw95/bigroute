@@ -102,7 +102,11 @@ public final class NineRouterManualRoutingService: @unchecked Sendable {
         try validate(provider)
         let data = try await send(
             provider: provider,
-            body: RequestBody(operation: "preview", action: action, previewToken: nil)
+            body: RequestBody(
+                operation: "preview",
+                action: action,
+                previewToken: nil
+            )
         )
         do {
             return try JSONDecoder().decode(NineRouterRoutingPreview.self, from: data)
@@ -131,6 +135,27 @@ public final class NineRouterManualRoutingService: @unchecked Sendable {
         }
     }
 
+    public func applyCached(
+        action: NineRouterAccountAction,
+        provider: CustomQuotaProvider
+    ) async throws -> NineRouterRoutingResult {
+        try validate(provider)
+        let data = try await send(
+            provider: provider,
+            body: RequestBody(
+                operation: "apply_cached",
+                action: action,
+                previewToken: nil
+            ),
+            timeoutInterval: 15
+        )
+        do {
+            return try JSONDecoder().decode(NineRouterRoutingResult.self, from: data)
+        } catch {
+            throw NineRouterManualRoutingError.invalidResponse
+        }
+    }
+
     private func validate(_ provider: CustomQuotaProvider) throws {
         guard provider.apiKind == .nineRouter else {
             throw NineRouterManualRoutingError.unsupportedProvider
@@ -140,7 +165,11 @@ public final class NineRouterManualRoutingService: @unchecked Sendable {
         }
     }
 
-    private func send(provider: CustomQuotaProvider, body: RequestBody) async throws -> Data {
+    private func send(
+        provider: CustomQuotaProvider,
+        body: RequestBody,
+        timeoutInterval: TimeInterval = 180
+    ) async throws -> Data {
         let baseURL = try RouterEndpoint.normalizedURL(from: provider.endpoint)
         var request = URLRequest(
             url: QuotaService.quotaURL(from: baseURL),
@@ -152,7 +181,7 @@ public final class NineRouterManualRoutingService: @unchecked Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.httpBody = try JSONEncoder().encode(body)
-        request.timeoutInterval = 180
+        request.timeoutInterval = timeoutInterval
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {

@@ -241,7 +241,7 @@ jobs:
 
           This build is distributed for internal office use and is authenticated by a Sparkle Ed25519 signature.
 
-          Automatic Account Routing is not included. Scheduled refreshes and widgets are read-only, and Bigroute never logs into the 9Router dashboard. Providers explicitly configured as 9Router expose two manual actions: Bigroute first shows a fresh server-side preview, requires confirmation, then asks 9Router to revalidate every candidate before changing account state. Installing this update sends no migration request and leaves existing account states unchanged.
+          Automatic Account Routing is not included. Scheduled refreshes and widgets are read-only, and Bigroute never logs into the 9Router dashboard. Providers explicitly configured as 9Router expose two manual actions that start immediately and use 9Router's latest bounded quota snapshot; stale or missing snapshots are rejected safely. Installing this update sends no migration request and leaves existing account states unchanged.
 
           It uses a persistent internal code-signing certificate and is not Apple notarized. Because that certificate has no Apple Team ID, the office build intentionally does not enable Hardened Runtime library validation; Sparkle Ed25519 signatures still authenticate every OTA update. The first installation may require **Privacy & Security > Open Anyway**. Once installed, later office releases update automatically through Bigroute.
 
@@ -277,7 +277,7 @@ jobs:
           set -euo pipefail
           channel_tag="office-channel"
           channel_title="Bigroute Office Update Channel"
-          channel_notes="Signed Sparkle feed for Bigroute office builds. Scheduled monitoring is read-only; 9Router account changes require explicit preview and confirmation."
+          channel_notes="Signed Sparkle feed for Bigroute office builds. Scheduled monitoring is read-only; 9Router account changes require an explicit manual button press."
           if ! gh release view "$channel_tag" >/dev/null 2>&1; then
             gh release create "$channel_tag" \
               --target "$GITHUB_SHA" \

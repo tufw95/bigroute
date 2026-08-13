@@ -7,9 +7,7 @@ import SwiftUI
 struct DashboardView: View {
     @Environment(QuotaMonitor.self) private var monitor
     @Environment(UpdateController.self) private var updateController
-    @State private var routingPreview: NineRouterRoutingPreview?
     @State private var manualActionError: String?
-    @State private var lastRoutingResult: NineRouterRoutingResult?
 
     private let contentWidth: CGFloat = 700
     private let minimumHeight: CGFloat = 220
@@ -56,26 +54,7 @@ struct DashboardView: View {
         .background(.regularMaterial)
         .animation(.snappy(duration: 0.2), value: preferredHeight)
         .onChange(of: monitor.selectedProviderID) { _, _ in
-            routingPreview = nil
             manualActionError = nil
-            lastRoutingResult = nil
-        }
-        .sheet(item: $routingPreview) { preview in
-            ManualRoutingConfirmationView(
-                providerName: currentProvider?.name ?? "9Router",
-                preview: preview,
-                isApplying: monitor.isRunningManualAction,
-                onCancel: { routingPreview = nil },
-                onConfirm: { apply(preview) }
-            )
-        }
-        .alert("Account Action Failed", isPresented: Binding(
-            get: { manualActionError != nil },
-            set: { if !$0 { manualActionError = nil } }
-        )) {
-            Button("OK", role: .cancel) { manualActionError = nil }
-        } message: {
-            Text(manualActionError ?? "Unknown error")
         }
     }
 
@@ -127,14 +106,18 @@ struct DashboardView: View {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
             Spacer()
+            if monitor.isRunningManualAction {
+                ProgressView()
+                    .controlSize(.small)
+            }
             Button {
-                requestPreview(.turnOffEmpty)
+                runManualAction(.turnOffEmpty)
             } label: {
                 Label("Turn Off Empty", systemImage: NineRouterAccountAction.turnOffEmpty.systemImage)
             }
             .tint(.red)
             Button {
-                requestPreview(.turnOnAvailable)
+                runManualAction(.turnOnAvailable)
             } label: {
                 Label("Turn On Available", systemImage: NineRouterAccountAction.turnOnAvailable.systemImage)
             }
@@ -147,28 +130,13 @@ struct DashboardView: View {
         .padding(.vertical, 8)
     }
 
-    private func requestPreview(_ action: NineRouterAccountAction) {
+    private func runManualAction(_ action: NineRouterAccountAction) {
         guard let provider = currentProvider else { return }
         Task {
             do {
                 manualActionError = nil
-                lastRoutingResult = nil
-                routingPreview = try await monitor.previewManualAction(action, provider: provider)
+                _ = try await monitor.runManualAction(action, provider: provider)
             } catch {
-                manualActionError = error.localizedDescription
-            }
-        }
-    }
-
-    private func apply(_ preview: NineRouterRoutingPreview) {
-        guard let provider = currentProvider else { return }
-        Task {
-            do {
-                manualActionError = nil
-                lastRoutingResult = try await monitor.applyManualAction(preview, provider: provider)
-                routingPreview = nil
-            } catch {
-                routingPreview = nil
                 manualActionError = error.localizedDescription
             }
         }
@@ -239,12 +207,6 @@ struct DashboardView: View {
             if let error = manualActionError ?? monitor.errorMessage {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text(error).lineLimit(1)
-            } else if let result = lastRoutingResult {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                Text("Updated \(result.changedCount), skipped \(result.skippedCount)")
-            } else if let message = monitor.manualActionMessage {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                Text(message)
             } else if let updatedAt = currentProvider.flatMap({ monitor.snapshot.provider(id: $0.id)?.updatedAt }) {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 Text("Updated \(EnglishRelativeTime.string(from: updatedAt))")
@@ -271,98 +233,6 @@ struct DashboardView: View {
     private var accounts: [CodexQuotaAccount] {
         guard let id = currentProvider?.id else { return [] }
         return monitor.configuration.sortOrder.sorted(monitor.snapshot.accounts(for: id))
-    }
-}
-
-private struct ManualRoutingConfirmationView: View {
-    let providerName: String
-    let preview: NineRouterRoutingPreview
-    let isApplying: Bool
-    let onCancel: () -> Void
-    let onConfirm: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                Image(systemName: preview.action.systemImage)
-                    .font(.title2)
-                    .foregroundStyle(preview.action == .turnOffEmpty ? .red : .green)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(preview.action.title)
-                        .font(.headline)
-                    Text(providerName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if preview.candidateCount == 0 {
-                ContentUnavailableView(
-                    "No Accounts to Change",
-                    systemImage: "checkmark.circle",
-                    description: Text(emptyDescription)
-                )
-                .frame(maxWidth: .infinity, minHeight: 140)
-            } else {
-                Text(summaryText)
-                    .font(.body)
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 7) {
-                        ForEach(Array(preview.candidates.enumerated()), id: \.offset) { _, candidate in
-                            HStack {
-                                Image(systemName: candidate.remainingPercent <= preview.thresholdPercent ? "gauge.with.dots.needle.0percent" : "checkmark.circle")
-                                    .foregroundStyle(candidate.remainingPercent <= preview.thresholdPercent ? .red : .green)
-                                Text(candidate.label)
-                                    .lineLimit(1)
-                                Spacer()
-                                Text("\(candidate.remainingPercent)% remaining")
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 10)
-                            .frame(height: 32)
-                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 9))
-                        }
-                    }
-                }
-                .frame(maxHeight: 260)
-            }
-
-            if preview.skippedCount > 0 {
-                Text("\(preview.skippedCount) account(s) were skipped because fresh quota was unavailable. They will not be changed.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack {
-                Button("Cancel", action: onCancel)
-                Spacer()
-                Button(preview.action.title, action: onConfirm)
-                    .buttonStyle(.borderedProminent)
-                    .tint(preview.action == .turnOffEmpty ? .red : .green)
-                    .disabled(preview.candidateCount == 0 || isApplying)
-            }
-        }
-        .padding(20)
-        .frame(width: 470, height: preview.candidateCount == 0 ? 300 : 430)
-    }
-
-    private var summaryText: String {
-        switch preview.action {
-        case .turnOffEmpty:
-            "9Router will recheck and turn off \(preview.candidateCount) active account(s) whose quota is \(preview.thresholdPercent)% or lower."
-        case .turnOnAvailable:
-            "9Router will recheck and turn on \(preview.candidateCount) inactive account(s) that still have more than \(preview.thresholdPercent)% quota."
-        }
-    }
-
-    private var emptyDescription: String {
-        switch preview.action {
-        case .turnOffEmpty:
-            "No active Codex account has \(preview.thresholdPercent)% quota or less."
-        case .turnOnAvailable:
-            "No inactive Codex account currently has available quota."
-        }
     }
 }
 
@@ -492,7 +362,7 @@ struct SettingsView: View {
             } header: {
                 Text("Providers")
             } footer: {
-                Text("API keys are stored in Keychain. Scheduled refreshes and widgets are always read-only; 9Router account changes require an explicit preview and confirmation in the menu bar.")
+                Text("API keys are stored in Keychain. Scheduled refreshes and widgets are always read-only; 9Router account changes happen only after you press a manual action in the menu bar.")
             }
 
             Section("Display") {

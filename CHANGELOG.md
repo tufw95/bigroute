@@ -6,18 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-08-13
+
+### Fixed
+
+- Manual 9Router actions now use one bounded `apply_cached` request based on the latest server-owned quota snapshot, eliminating the second account-by-account quota scan.
+- Removed the manual-action confirmation and result popups; actions start immediately and show only an inline progress indicator.
+- Sparkle office update checks now add a cache-busting query so an older cached channel feed cannot stage releases one version at a time.
+
 ## [1.3.0] - 2026-08-12
 
 ### Added
 
 - Added explicit **Turn Off Empty** and **Turn On Available** actions for providers configured as 9Router.
-- Added a server-side preview and confirmation flow that inspects every Codex OAuth account, keeps internal account IDs private, and revalidates quota and account state immediately before each change.
+- Added a guarded server-side account action flow that keeps internal account IDs private and rechecks current account state before each change.
 - Added a provider type selector so custom providers can opt into the 9Router actions without affecting Auto-detect or OmniRouter providers.
 
 ### Security
 
-- Kept scheduled refreshes, WidgetKit, and provider detection read-only; account state can change only after a visible user action and confirmation.
-- Added short-lived, single-use preview tokens, an in-process mutation lock, fail-closed quota checks, and per-account skip handling.
+- Kept scheduled refreshes, WidgetKit, and provider detection read-only; account state can change only after a visible user action.
+- Added an in-process mutation lock, fail-closed quota checks, and per-account skip handling.
 
 ## [1.2.2] - 2026-08-10
 
@@ -103,7 +111,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.3.0...HEAD
+[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.3.1...HEAD
+[1.3.1]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.1
 [1.3.0]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.0
 [1.2.2]: https://github.com/tufw95/bigroute/releases/tag/office-v1.2.2
 [1.2.1]: https://github.com/tufw95/bigroute/releases/tag/office-v1.2.1

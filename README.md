@@ -15,7 +15,7 @@ Bigroute is a native macOS menu bar app and WidgetKit extension for monitoring a
 - Show remaining quota with red (0–20%), yellow (21–70%), and green (71–100%) indicators, plus account state and time until quota refresh.
 - Refresh providers in parallel every 1–60 minutes; the default is 2 minutes.
 - Store API keys in macOS Keychain and share only sanitized quota snapshots with the widget.
-- Stay read-only during monitoring; 9Router account state changes happen only when a user previews, confirms, and presses one of the two manual account actions.
+- Stay read-only during monitoring; 9Router account state changes happen only when a user presses one of the two visible manual account actions.
 - Use native SwiftUI, AppKit, WidgetKit, App Intents, semantic colors, and macOS materials.
 - Deliver signed automatic updates with Sparkle 2.
 
@@ -23,7 +23,7 @@ Bigroute is a native macOS menu bar app and WidgetKit extension for monitoring a
 
 Bigroute requires macOS 14 or later on Apple Silicon or Intel Macs.
 
-The current office build is available from [Bigroute 1.3.0 Office](https://github.com/tufw95/bigroute/releases/tag/office-v1.3.0):
+The current office build is available from [Bigroute 1.3.1 Office](https://github.com/tufw95/bigroute/releases/tag/office-v1.3.1):
 
 Existing Router Quota 1.0.2 users should use **Check for Updates…** for the cleanest in-place migration. For a manual upgrade, quit Router Quota and move `/Applications/Router Quota.app` to the Trash before copying Bigroute; keeping both bundles can make macOS load the older widget because they intentionally share compatibility identifiers.
 
@@ -54,7 +54,7 @@ Open **Bigroute > Settings**, then add a provider with:
 - **Endpoint:** the provider's HTTPS base URL or supported quota URL.
 - **API key:** the credential allowed to read that provider's quota endpoint.
 
-Automatic Account Routing was removed in 1.2.2. Bigroute never logs into the 9Router dashboard and never runs account changes in the background. For an explicitly configured 9Router provider, **Turn Off Empty** and **Turn On Available** first request a fresh server-side preview, show every candidate for confirmation, then ask the same quota endpoint to revalidate and apply the action.
+Automatic Account Routing was removed in 1.2.2. Bigroute never logs into the 9Router dashboard and never runs account changes in the background. For an explicitly configured 9Router provider, **Turn Off Empty** and **Turn On Available** are immediate manual actions. They use 9Router's latest server-side quota snapshot, reject stale or missing data, and never start a second multi-minute quota scan.
 
 If only one provider exists, the provider picker is hidden. With multiple providers, use the centered picker to switch between them. API keys stay in macOS Keychain and are never copied into WidgetKit snapshots or release artifacts.
 
@@ -122,8 +122,8 @@ Required repository secrets:
 Create an office release after CI passes on `main`:
 
 ```bash
-git tag -a office-v1.3.0 -m "Bigroute 1.3.0"
-git push origin office-v1.3.0
+git tag -a office-v1.3.1 -m "Bigroute 1.3.1"
+git push origin office-v1.3.1
 ```
 
 Existing office installations check the dedicated channel hourly and can also use **Check for Updates…** immediately. The legacy `com.routerquota.*` bundle IDs and App Group are intentionally retained for OTA, Keychain, and WidgetKit continuity even though all user-facing product and release names are Bigroute.
