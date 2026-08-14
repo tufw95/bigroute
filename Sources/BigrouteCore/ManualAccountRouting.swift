@@ -57,6 +57,14 @@ public struct NineRouterRoutingResult: Codable, Equatable, Sendable {
     public let skippedCount: Int
     public let changed: [NineRouterRoutingChange]
     public let skipped: [NineRouterRoutingSkip]
+
+    public func accountStates(providerID: UUID) -> [String: Bool] {
+        changed.reduce(into: [String: Bool]()) { states, change in
+            guard let id = change.id else { return }
+            states[id] = change.isActive
+            states["\(providerID.uuidString):\(id)"] = change.isActive
+        }
+    }
 }
 
 public enum NineRouterManualRoutingError: Error, LocalizedError, Equatable {

@@ -308,6 +308,11 @@ import Testing
     )
     #expect(result.changedCount == 2)
     #expect(result.changed.map(\.id) == ["one", "two"])
+    let accountStates = result.accountStates(providerID: provider.id)
+    #expect(accountStates["one"] == true)
+    #expect(accountStates["\(provider.id.uuidString):one"] == true)
+    #expect(accountStates["two"] == true)
+    #expect(accountStates["\(provider.id.uuidString):two"] == true)
 
     let requests = CachedRoutingURLProtocol.requestsSnapshot()
     #expect(requests.count == 1)

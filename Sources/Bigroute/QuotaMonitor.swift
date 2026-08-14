@@ -143,11 +143,7 @@ final class QuotaMonitor {
         _ result: NineRouterRoutingResult,
         providerID: UUID
     ) {
-        let states = result.changed.reduce(into: [String: Bool]()) { states, change in
-            if let id = change.id {
-                states[id] = change.isActive
-            }
-        }
+        let states = result.accountStates(providerID: providerID)
         guard !states.isEmpty else { return }
 
         let providers = snapshot.providers.map { provider -> ProviderQuotaSnapshot in

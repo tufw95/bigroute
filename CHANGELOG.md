@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-08-14
+
+### Fixed
+
+- Manual 9Router results now reconcile server-issued account IDs with Bigroute's provider-scoped IDs, so an account disappears immediately after **Turn Off Empty** and reappears immediately after **Turn On Available** without waiting for the follow-up refresh.
+
 ## [1.3.3] - 2026-08-14
 
 ### Fixed
@@ -127,7 +133,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.3.3...HEAD
+[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.3.4...HEAD
+[1.3.4]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.4
 [1.3.3]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.3
 [1.3.2]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.2
 [1.3.1]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.1
