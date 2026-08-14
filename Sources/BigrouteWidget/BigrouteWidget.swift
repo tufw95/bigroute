@@ -164,6 +164,11 @@ struct ProviderWidgetView: View {
                         .foregroundStyle(.orange)
                         .lineLimit(1)
                 }
+            } else if provider != nil, hasHiddenInactiveAccounts {
+                Text("No active accounts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
             } else {
                 Text("Open Bigroute to add or refresh a provider.")
                     .font(.caption)
@@ -209,7 +214,12 @@ struct ProviderWidgetView: View {
     }
 
     private var accounts: [CodexQuotaAccount] {
-        entry.snapshot.sortOrder.sorted(provider?.accounts ?? [])
+        let visibleAccounts = (provider?.accounts ?? []).filter(\.isRoutingActive)
+        return entry.snapshot.sortOrder.sorted(visibleAccounts)
+    }
+
+    private var hasHiddenInactiveAccounts: Bool {
+        provider?.accounts.contains { !$0.isRoutingActive } == true
     }
 
     private var columns: [GridItem] {
@@ -281,11 +291,6 @@ private struct WidgetAccountRow: View {
                 .font(.caption2.weight(.medium))
                 .lineLimit(1)
             Spacer(minLength: 2)
-            if account.isActive == false {
-                Text("Off")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.orange)
-            }
             if let quota = account.primaryQuota {
                 Text("\(Int(quota.remaining.rounded()))%")
                     .font(.caption2.monospacedDigit().weight(.semibold))

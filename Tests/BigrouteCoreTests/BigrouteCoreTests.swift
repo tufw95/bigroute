@@ -60,6 +60,24 @@ import Testing
     #expect(legacy.isActive == nil)
 }
 
+@Test func accountRoutingVisibilityHidesOnlyExplicitlyInactiveAccounts() {
+    let account = CodexQuotaAccount(
+        id: "nine-8",
+        provider: "codex",
+        label: "Office",
+        plan: "plus",
+        limitReached: false,
+        quotas: [],
+        resetCredits: .init(availableCount: 0),
+        status: "available",
+        errorCode: nil
+    )
+
+    #expect(account.isRoutingActive)
+    #expect(account.withActiveState(true).isRoutingActive)
+    #expect(!account.withActiveState(false).isRoutingActive)
+}
+
 @Test func accountDecoderRejectsIncompleteQuotaRecords() {
     let incomplete = Data(#"{"id":"nine-4","name":"Incomplete"}"#.utf8)
     #expect(throws: DecodingError.self) {

@@ -31,13 +31,9 @@ struct DashboardView: View {
             }
             if accounts.isEmpty {
                 ContentUnavailableView(
-                    monitor.enabledProviders.isEmpty ? "No providers configured" : "No quota data",
-                    systemImage: monitor.enabledProviders.isEmpty
-                        ? "plus.circle"
-                        : "gauge.with.dots.needle.0percent",
-                    description: Text(monitor.enabledProviders.isEmpty
-                        ? "Open Settings to add a quota provider."
-                        : "Check the endpoint and API key in Settings.")
+                    emptyStateTitle,
+                    systemImage: emptyStateIcon,
+                    description: Text(emptyStateDescription)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if needsAccountScroll {
@@ -256,7 +252,37 @@ struct DashboardView: View {
 
     private var accounts: [CodexQuotaAccount] {
         guard let id = currentProvider?.id else { return [] }
-        return monitor.configuration.sortOrder.sorted(monitor.snapshot.accounts(for: id))
+        let visibleAccounts = monitor.snapshot.accounts(for: id).filter(\.isRoutingActive)
+        return monitor.configuration.sortOrder.sorted(visibleAccounts)
+    }
+
+    private var hasHiddenInactiveAccounts: Bool {
+        guard let id = currentProvider?.id else { return false }
+        return monitor.snapshot.accounts(for: id).contains { !$0.isRoutingActive }
+    }
+
+    private var emptyStateTitle: String {
+        if monitor.enabledProviders.isEmpty { return "No providers configured" }
+        if hasHiddenInactiveAccounts { return "No active accounts" }
+        return "No quota data"
+    }
+
+    private var emptyStateIcon: String {
+        if monitor.enabledProviders.isEmpty { return "plus.circle" }
+        if hasHiddenInactiveAccounts { return "person.crop.circle.badge.xmark" }
+        return "gauge.with.dots.needle.0percent"
+    }
+
+    private var emptyStateDescription: String {
+        if monitor.enabledProviders.isEmpty {
+            return "Open Settings to add a quota provider."
+        }
+        if hasHiddenInactiveAccounts {
+            return supportsManualRouting
+                ? "Accounts turned off in 9Router are hidden. Use Turn On Available to restore eligible accounts."
+                : "Accounts turned off by this provider are hidden."
+        }
+        return "Check the endpoint and API key in Settings."
     }
 }
 
@@ -288,11 +314,6 @@ struct QuotaAccountCard: View {
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
-                    if account.isActive == false {
-                        Text("Off")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.orange)
-                    }
                 }
                 Text(resetText)
                     .font(.caption2)
@@ -309,7 +330,7 @@ struct QuotaAccountCard: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .stroke(account.isActive == false ? Color.orange.opacity(0.35) : Color.primary.opacity(0.06))
+                .stroke(Color.primary.opacity(0.06))
         }
     }
 

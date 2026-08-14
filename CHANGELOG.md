@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-08-14
+
+### Fixed
+
+- Accounts explicitly turned off in 9Router are now hidden from both the menu-bar grid and WidgetKit instead of remaining visible with an **Off** badge.
+- Turning an eligible account back on makes it reappear immediately from the retained local snapshot, while providers that do not expose routing state remain fully visible.
+
 ## [1.3.2] - 2026-08-14
 
 ### Fixed
@@ -120,7 +127,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.3.2...HEAD
+[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.3.3...HEAD
+[1.3.3]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.3
 [1.3.2]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.2
 [1.3.1]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.1
 [1.3.0]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.0

@@ -262,6 +262,11 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         quotas.first(where: { $0.key == "session" }) ?? quotas.first
     }
 
+    /// Providers that do not expose routing state remain visible.
+    public var isRoutingActive: Bool {
+        isActive != false
+    }
+
     public func sourced(providerID: UUID) -> CodexQuotaAccount {
         let source = providerID.uuidString
         return CodexQuotaAccount(
