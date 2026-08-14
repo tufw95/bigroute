@@ -281,6 +281,11 @@ private struct WidgetAccountRow: View {
                 .font(.caption2.weight(.medium))
                 .lineLimit(1)
             Spacer(minLength: 2)
+            if account.isActive == false {
+                Text("Off")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
             if let quota = account.primaryQuota {
                 Text("\(Int(quota.remaining.rounded()))%")
                     .font(.caption2.monospacedDigit().weight(.semibold))

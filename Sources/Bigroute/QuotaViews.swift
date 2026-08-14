@@ -8,6 +8,7 @@ struct DashboardView: View {
     @Environment(QuotaMonitor.self) private var monitor
     @Environment(UpdateController.self) private var updateController
     @State private var manualActionError: String?
+    @State private var manualActionMessage: String?
 
     private let contentWidth: CGFloat = 700
     private let minimumHeight: CGFloat = 220
@@ -55,6 +56,7 @@ struct DashboardView: View {
         .animation(.snappy(duration: 0.2), value: preferredHeight)
         .onChange(of: monitor.selectedProviderID) { _, _ in
             manualActionError = nil
+            manualActionMessage = nil
         }
     }
 
@@ -102,9 +104,20 @@ struct DashboardView: View {
 
     private var manualRoutingBar: some View {
         HStack(spacing: 8) {
-            Label("Manual account actions", systemImage: "hand.tap")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
+            Group {
+                if let manualActionError {
+                    Label(manualActionError, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                } else if let manualActionMessage {
+                    Label(manualActionMessage, systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                } else {
+                    Label("Manual account actions", systemImage: "hand.tap")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .font(.caption.weight(.medium))
+            .lineLimit(1)
             Spacer()
             if monitor.isRunningManualAction {
                 ProgressView()
@@ -135,8 +148,19 @@ struct DashboardView: View {
         Task {
             do {
                 manualActionError = nil
-                _ = try await monitor.runManualAction(action, provider: provider)
+                manualActionMessage = nil
+                let result = try await monitor.runManualAction(action, provider: provider)
+                if result.changedCount == 0, result.skippedCount > 0 {
+                    manualActionMessage = "No changes · \(result.skippedCount) skipped"
+                } else if result.changedCount == 0 {
+                    manualActionMessage = "Already up to date"
+                } else if result.skippedCount > 0 {
+                    manualActionMessage = "\(result.changedCount) updated · \(result.skippedCount) skipped"
+                } else {
+                    manualActionMessage = "\(result.changedCount) account\(result.changedCount == 1 ? "" : "s") updated"
+                }
             } catch {
+                manualActionMessage = nil
                 manualActionError = error.localizedDescription
             }
         }
@@ -204,7 +228,7 @@ struct DashboardView: View {
 
     private var footer: some View {
         HStack(spacing: 6) {
-            if let error = manualActionError ?? monitor.errorMessage {
+            if let error = monitor.errorMessage {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text(error).lineLimit(1)
             } else if let updatedAt = currentProvider.flatMap({ monitor.snapshot.provider(id: $0.id)?.updatedAt }) {
@@ -264,6 +288,11 @@ struct QuotaAccountCard: View {
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
+                    if account.isActive == false {
+                        Text("Off")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.orange)
+                    }
                 }
                 Text(resetText)
                     .font(.caption2)
@@ -280,7 +309,7 @@ struct QuotaAccountCard: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .stroke(.primary.opacity(0.06))
+                .stroke(account.isActive == false ? Color.orange.opacity(0.35) : Color.primary.opacity(0.06))
         }
     }
 

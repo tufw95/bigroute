@@ -17,6 +17,10 @@ final class QuotaMonitor {
         subsystem: "com.routerquota.app",
         category: "WidgetSync"
     )
+    private static let routingLogger = Logger(
+        subsystem: "com.routerquota.app",
+        category: "ManualRouting"
+    )
 
     var configuration: BigrouteConfiguration
     var snapshot: BigrouteSnapshot
@@ -113,10 +117,65 @@ final class QuotaMonitor {
         }
         isRunningManualAction = true
         defer { isRunningManualAction = false }
-        return try await NineRouterManualRoutingService().applyCached(
-            action: action,
-            provider: provider
+        let startedAt = Date()
+        do {
+            let result = try await NineRouterManualRoutingService().applyCached(
+                action: action,
+                provider: provider
+            )
+            applyManualRoutingResult(result, providerID: provider.id)
+            refresh(force: true)
+            let elapsed = Date().timeIntervalSince(startedAt)
+            Self.routingLogger.info(
+                "Manual action \(action.rawValue, privacy: .public) completed in \(elapsed, privacy: .public) seconds; changed=\(result.changedCount, privacy: .public) skipped=\(result.skippedCount, privacy: .public)"
+            )
+            return result
+        } catch {
+            let elapsed = Date().timeIntervalSince(startedAt)
+            Self.routingLogger.error(
+                "Manual action \(action.rawValue, privacy: .public) failed in \(elapsed, privacy: .public) seconds: \(error.localizedDescription, privacy: .public)"
+            )
+            throw error
+        }
+    }
+
+    private func applyManualRoutingResult(
+        _ result: NineRouterRoutingResult,
+        providerID: UUID
+    ) {
+        let states = result.changed.reduce(into: [String: Bool]()) { states, change in
+            if let id = change.id {
+                states[id] = change.isActive
+            }
+        }
+        guard !states.isEmpty else { return }
+
+        let providers = snapshot.providers.map { provider -> ProviderQuotaSnapshot in
+            guard provider.id == providerID else { return provider }
+            let accounts = provider.accounts.map { account in
+                states[account.id].map(account.withActiveState) ?? account
+            }
+            return ProviderQuotaSnapshot(
+                id: provider.id,
+                name: provider.name,
+                accounts: accounts,
+                updatedAt: provider.updatedAt,
+                lastError: provider.lastError
+            )
+        }
+        snapshot = BigrouteSnapshot(
+            providers: providers,
+            generatedAt: Date(),
+            sortOrder: configuration.sortOrder
         )
+        do {
+            try snapshotStore.save(snapshot)
+            reloadWidget(force: true)
+        } catch {
+            Self.routingLogger.error(
+                "Could not persist manual action state: \(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 
     func refresh(force: Bool = false) {

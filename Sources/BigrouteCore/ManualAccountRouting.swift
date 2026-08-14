@@ -41,6 +41,7 @@ public struct NineRouterRoutingPreview: Codable, Equatable, Identifiable, Sendab
 }
 
 public struct NineRouterRoutingChange: Codable, Equatable, Sendable {
+    public let id: String?
     public let label: String
     public let isActive: Bool
 }

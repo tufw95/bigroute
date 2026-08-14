@@ -50,6 +50,16 @@ import Testing
     #expect(account.label == "Design Mac")
 }
 
+@Test func accountDecoderPreservesOptionalRoutingState() throws {
+    let inactiveJSON = Data(#"{"id":"nine-6","provider":"codex","name":"Office","isActive":false,"plan":"plus","limitReached":false,"quotas":[],"resetCredits":{"availableCount":0},"status":"available"}"#.utf8)
+    let inactive = try JSONDecoder().decode(CodexQuotaAccount.self, from: inactiveJSON)
+    #expect(inactive.isActive == false)
+
+    let legacyJSON = Data(#"{"id":"nine-7","provider":"codex","name":"Legacy","plan":"plus","limitReached":false,"quotas":[],"resetCredits":{"availableCount":0},"status":"available"}"#.utf8)
+    let legacy = try JSONDecoder().decode(CodexQuotaAccount.self, from: legacyJSON)
+    #expect(legacy.isActive == nil)
+}
+
 @Test func accountDecoderRejectsIncompleteQuotaRecords() {
     let incomplete = Data(#"{"id":"nine-4","name":"Incomplete"}"#.utf8)
     #expect(throws: DecodingError.self) {
@@ -99,7 +109,7 @@ import Testing
     let account = CodexQuotaAccount(
         id: "9r-1", provider: "9router", label: "Primary", plan: "Pro", limitReached: false,
         quotas: [CodexQuotaWindow(key: "session", used: 25, total: 100, remaining: 75, resetAt: nil, unlimited: false)],
-        resetCredits: .init(availableCount: 0), status: "valid", errorCode: nil
+        resetCredits: .init(availableCount: 0), status: "valid", errorCode: nil, isActive: false
     )
     let snapshot = BigrouteSnapshot(
         accounts: [account],
@@ -109,6 +119,7 @@ import Testing
     try store.save(snapshot)
     #expect(store.load() == snapshot)
     #expect(store.load()?.sortOrder == .nameAscending)
+    #expect(store.load()?.accounts.first?.isActive == false)
     try? FileManager.default.removeItem(at: directory)
 }
 
@@ -264,7 +275,7 @@ import Testing
     configuration.protocolClasses = [CachedRoutingURLProtocol.self]
     let session = URLSession(configuration: configuration)
     CachedRoutingURLProtocol.reset(responses: [
-        Data(#"{"action":"turn_on_available","changedCount":2,"skippedCount":0,"changed":[{"label":"One","isActive":true},{"label":"Two","isActive":true}],"skipped":[]}"#.utf8)
+        Data(#"{"action":"turn_on_available","changedCount":2,"skippedCount":0,"changed":[{"id":"one","label":"One","isActive":true},{"id":"two","label":"Two","isActive":true}],"skipped":[]}"#.utf8)
     ])
     let provider = CustomQuotaProvider(
         name: "9Router",
@@ -278,6 +289,7 @@ import Testing
         provider: provider
     )
     #expect(result.changedCount == 2)
+    #expect(result.changed.map(\.id) == ["one", "two"])
 
     let requests = CachedRoutingURLProtocol.requestsSnapshot()
     #expect(requests.count == 1)

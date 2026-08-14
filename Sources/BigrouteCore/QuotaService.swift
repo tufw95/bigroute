@@ -135,6 +135,7 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
     public let resetCredits: ResetCredits
     public let status: String
     public let errorCode: String?
+    public let isActive: Bool?
 
     public init(
         id: String,
@@ -145,7 +146,8 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         quotas: [CodexQuotaWindow],
         resetCredits: ResetCredits,
         status: String,
-        errorCode: String?
+        errorCode: String?,
+        isActive: Bool? = nil
     ) {
         self.id = id
         self.provider = provider
@@ -156,6 +158,7 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         self.resetCredits = resetCredits
         self.status = status
         self.errorCode = errorCode
+        self.isActive = isActive
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -164,7 +167,7 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         case displayNameSnake = "display_name"
         case userNameSnake = "user_name"
         case account, user, metadata, connection
-        case plan, limitReached, quotas, resetCredits, status, errorCode
+        case plan, limitReached, quotas, resetCredits, status, errorCode, isActive
     }
 
     private enum IdentityKeys: String, CodingKey {
@@ -194,6 +197,7 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         resetCredits = try container.decode(ResetCredits.self, forKey: .resetCredits)
         status = try container.decode(String.self, forKey: .status)
         errorCode = try container.decodeIfPresent(String.self, forKey: .errorCode)
+        isActive = try container.decodeIfPresent(Bool.self, forKey: .isActive)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -207,6 +211,7 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         try container.encode(resetCredits, forKey: .resetCredits)
         try container.encode(status, forKey: .status)
         try container.encodeIfPresent(errorCode, forKey: .errorCode)
+        try container.encodeIfPresent(isActive, forKey: .isActive)
     }
 
     private static func firstIdentity(in container: KeyedDecodingContainer<CodingKeys>) -> String? {
@@ -268,7 +273,23 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
             quotas: quotas,
             resetCredits: resetCredits,
             status: status,
-            errorCode: errorCode
+            errorCode: errorCode,
+            isActive: isActive
+        )
+    }
+
+    public func withActiveState(_ isActive: Bool) -> CodexQuotaAccount {
+        CodexQuotaAccount(
+            id: id,
+            provider: provider,
+            label: label,
+            plan: plan,
+            limitReached: limitReached,
+            quotas: quotas,
+            resetCredits: resetCredits,
+            status: status,
+            errorCode: errorCode,
+            isActive: isActive
         )
     }
 }
@@ -685,7 +706,8 @@ public final class OmniQuotaService: @unchecked Sendable {
             quotas: [],
             resetCredits: account.resetCredits,
             status: account.status,
-            errorCode: account.errorCode
+            errorCode: account.errorCode,
+            isActive: account.isActive
         )
     }
 
