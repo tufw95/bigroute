@@ -3,12 +3,14 @@ import AppKit
 import BigrouteCore
 #endif
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct DashboardView: View {
     @Environment(QuotaMonitor.self) private var monitor
     @Environment(UpdateController.self) private var updateController
     @State private var manualActionError: String?
     @State private var manualActionMessage: String?
+    @State private var isShowingAccountImporter = false
 
     private let contentWidth: CGFloat = 700
     private let minimumHeight: CGFloat = 220
@@ -53,6 +55,13 @@ struct DashboardView: View {
         .onChange(of: monitor.selectedProviderID) { _, _ in
             manualActionError = nil
             manualActionMessage = nil
+        }
+        .fileImporter(
+            isPresented: $isShowingAccountImporter,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: true
+        ) { result in
+            handleAccountImportSelection(result)
         }
     }
 
@@ -108,17 +117,25 @@ struct DashboardView: View {
                     Label(manualActionMessage, systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                 } else {
-                    Label("Manual account actions", systemImage: "hand.tap")
+                    Label("9Router account tools", systemImage: "hand.tap")
                         .foregroundStyle(.secondary)
                 }
             }
             .font(.caption.weight(.medium))
             .lineLimit(1)
             Spacer()
-            if monitor.isRunningManualAction {
+            if monitor.isRunningManualAction || monitor.isImportingAccounts {
                 ProgressView()
                     .controlSize(.small)
             }
+            Button {
+                manualActionError = nil
+                manualActionMessage = nil
+                isShowingAccountImporter = true
+            } label: {
+                Label("Import JSON…", systemImage: "doc.badge.plus")
+            }
+            .help("Import ChatGPT account JSON files into 9Router")
             Button {
                 runManualAction(.turnOffEmpty)
             } label: {
@@ -134,9 +151,39 @@ struct DashboardView: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .disabled(monitor.isRunningManualAction)
+        .disabled(monitor.isRunningManualAction || monitor.isImportingAccounts)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+
+    private func handleAccountImportSelection(_ selection: Result<[URL], Error>) {
+        switch selection {
+        case let .success(urls):
+            guard let provider = currentProvider, !urls.isEmpty else { return }
+            Task {
+                do {
+                    manualActionError = nil
+                    manualActionMessage = nil
+                    let result = try await monitor.importAccounts(from: urls, provider: provider)
+                    if result.importedCount == 0, result.skippedCount > 0, result.failedCount == 0 {
+                        manualActionMessage = "No new accounts · \(result.skippedCount) duplicate\(result.skippedCount == 1 ? "" : "s") skipped"
+                    } else {
+                        var parts = ["\(result.importedCount) imported"]
+                        if result.skippedCount > 0 { parts.append("\(result.skippedCount) skipped") }
+                        if result.failedCount > 0 { parts.append("\(result.failedCount) failed") }
+                        manualActionMessage = parts.joined(separator: " · ")
+                    }
+                } catch {
+                    manualActionMessage = nil
+                    manualActionError = error.localizedDescription
+                }
+            }
+        case let .failure(error):
+            if (error as? CocoaError)?.code != .userCancelled {
+                manualActionMessage = nil
+                manualActionError = error.localizedDescription
+            }
+        }
     }
 
     private func runManualAction(_ action: NineRouterAccountAction) {
@@ -412,7 +459,7 @@ struct SettingsView: View {
             } header: {
                 Text("Providers")
             } footer: {
-                Text("API keys are stored in Keychain. Scheduled refreshes and widgets are always read-only; 9Router account changes happen only after you press a manual action in the menu bar.")
+                Text("API keys are stored in Keychain. Scheduled refreshes and widgets are always read-only; 9Router changes and credential imports happen only after an explicit menu-bar action.")
             }
 
             Section("Display") {

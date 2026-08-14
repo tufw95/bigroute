@@ -21,6 +21,7 @@ let package = Package(
             sources: [
                 "QuotaService.swift",
                 "ManualAccountRouting.swift",
+                "NineRouterAccountImport.swift",
                 "RouterEndpoint.swift",
                 "CustomQuotaProvider.swift",
                 "SharedQuotaStore.swift",

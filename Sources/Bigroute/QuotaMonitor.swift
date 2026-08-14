@@ -21,12 +21,17 @@ final class QuotaMonitor {
         subsystem: "com.routerquota.app",
         category: "ManualRouting"
     )
+    private static let importLogger = Logger(
+        subsystem: "com.routerquota.app",
+        category: "AccountImport"
+    )
 
     var configuration: BigrouteConfiguration
     var snapshot: BigrouteSnapshot
     var selectedProviderID: UUID?
     var isRefreshing = false
     var isRunningManualAction = false
+    var isImportingAccounts = false
     var errorMessage: String?
 
     private let credentialStore = CredentialStore()
@@ -134,6 +139,36 @@ final class QuotaMonitor {
             let elapsed = Date().timeIntervalSince(startedAt)
             Self.routingLogger.error(
                 "Manual action \(action.rawValue, privacy: .public) failed in \(elapsed, privacy: .public) seconds: \(error.localizedDescription, privacy: .public)"
+            )
+            throw error
+        }
+    }
+
+    func importAccounts(
+        from urls: [URL],
+        provider: CustomQuotaProvider
+    ) async throws -> NineRouterAccountImportResult {
+        guard !isImportingAccounts, !isRunningManualAction else {
+            throw AccountImportStateError("Another 9Router account operation is already running.")
+        }
+        isImportingAccounts = true
+        defer { isImportingAccounts = false }
+
+        do {
+            let result = try await NineRouterAccountImportService().importFiles(
+                urls,
+                provider: provider
+            )
+            Self.importLogger.info(
+                "Account import completed; imported=\(result.importedCount, privacy: .public) skipped=\(result.skippedCount, privacy: .public) failed=\(result.failedCount, privacy: .public)"
+            )
+            if result.importedCount > 0 {
+                refresh(force: true)
+            }
+            return result
+        } catch {
+            Self.importLogger.error(
+                "Account import failed safely: \(error.localizedDescription, privacy: .public)"
             )
             throw error
         }
@@ -335,6 +370,12 @@ private struct ConfigurationError: LocalizedError {
 }
 
 private struct ManualActionError: LocalizedError {
+    let message: String
+    init(_ message: String) { self.message = message }
+    var errorDescription: String? { message }
+}
+
+private struct AccountImportStateError: LocalizedError {
     let message: String
     init(_ message: String) { self.message = message }
     var errorDescription: String? { message }

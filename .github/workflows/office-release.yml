@@ -241,7 +241,7 @@ jobs:
 
           This build is distributed for internal office use and is authenticated by a Sparkle Ed25519 signature.
 
-          Automatic Account Routing is not included. Scheduled refreshes and widgets are read-only, and Bigroute never logs into the 9Router dashboard. Providers explicitly configured as 9Router expose two manual actions that start immediately and use 9Router's latest bounded quota snapshot; stale or missing snapshots are rejected safely. Installing this update sends no migration request and leaves existing account states unchanged.
+          Automatic Account Routing is not included. Scheduled refreshes and widgets are read-only, and Bigroute never logs into the 9Router dashboard. Providers explicitly configured as 9Router expose two immediate manual routing actions plus an explicit multi-file JSON import action. Imports use the saved API key, enforce bounded payloads, and never persist account tokens in Bigroute. Installing this update sends no migration request and leaves existing account states unchanged.
 
           It uses a persistent internal code-signing certificate and is not Apple notarized. Because that certificate has no Apple Team ID, the office build intentionally does not enable Hardened Runtime library validation; Sparkle Ed25519 signatures still authenticate every OTA update. The first installation may require **Privacy & Security > Open Anyway**. Once installed, later office releases update automatically through Bigroute.
 

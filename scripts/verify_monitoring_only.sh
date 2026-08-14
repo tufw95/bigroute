@@ -20,12 +20,12 @@ fi
 
 unexpected_post_lines="$(
   rg -n -S 'httpMethod[[:space:]]*=[[:space:]]*"POST"' Sources \
-    | rg -v '^Sources/BigrouteCore/ManualAccountRouting\.swift:' \
+    | rg -v '^Sources/BigrouteCore/(ManualAccountRouting|NineRouterAccountImport)\.swift:' \
     || true
 )"
 if [[ -n "$unexpected_post_lines" ]]; then
   printf '%s\n' "$unexpected_post_lines"
-  echo "POST requests are allowed only in ManualAccountRouting.swift." >&2
+  echo "POST requests are allowed only in the explicit 9Router action and import clients." >&2
   exit 1
 fi
 

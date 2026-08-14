@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-14
+
+### Added
+
+- Added a native **Import JSON…** action for providers configured as 9Router. It accepts up to 100 selected ChatGPT credential files, including single-account files, arrays, and `{ "accounts": [...] }` wrappers.
+- Added normalization for purchased credential formats that use either snake-case or camel-case token and account fields.
+
+### Security
+
+- Credential files are read only after explicit user selection, kept in memory, sent over the saved HTTPS 9Router endpoint, and never persisted or logged by Bigroute.
+- The API-key import path limits request size and account count, strips unknown and server-controlled fields, suppresses tokens in responses, serializes database writes, and skips duplicate accounts.
+
 ## [1.3.4] - 2026-08-14
 
 ### Fixed
@@ -133,7 +145,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.3.4...HEAD
+[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.4.0...HEAD
+[1.4.0]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.0
 [1.3.4]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.4
 [1.3.3]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.3
 [1.3.2]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.2

@@ -323,6 +323,99 @@ import Testing
     #expect(json["previewToken"] == nil)
 }
 
+@Test func accountImportParserNormalizesPurchasedCredentialFiles() throws {
+    let file = NineRouterCredentialFile(
+        name: "account.json",
+        data: Data(#"{"type":"codex","email":"person@example.com","account_id":"workspace-1","access_token":"access-value","refresh_token":"refresh-value","id_token":"id-value"}"#.utf8)
+    )
+
+    let accounts = try NineRouterAccountImportParser.parse(files: [file])
+    let account = try #require(accounts.first)
+    #expect(accounts.count == 1)
+    #expect(account.email == "person@example.com")
+    #expect(account.accountID == "workspace-1")
+    #expect(account.accessToken == "access-value")
+    #expect(account.refreshToken == "refresh-value")
+    #expect(account.idToken == "id-value")
+}
+
+@Test func accountImportParserRejectsDuplicateAccountsBeforeNetwork() throws {
+    let first = NineRouterCredentialFile(
+        name: "first.json",
+        data: Data(#"{"email":"person@example.com","account_id":"workspace-1","access_token":"access-one"}"#.utf8)
+    )
+    let duplicate = NineRouterCredentialFile(
+        name: "duplicate.json",
+        data: Data(#"{"email":"other@example.com","accountId":"workspace-1","accessToken":"access-two"}"#.utf8)
+    )
+
+    #expect(throws: NineRouterAccountImportError.duplicateAccount) {
+        try NineRouterAccountImportParser.parse(files: [first, duplicate])
+    }
+}
+
+@Test func accountImportRejectsOversizedFilesBeforeNetwork() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let fileURL = directory.appendingPathComponent("oversized.json")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try Data(
+        repeating: 0x61,
+        count: NineRouterAccountImportParser.maximumFileBytes + 1
+    ).write(to: fileURL)
+    let provider = CustomQuotaProvider(
+        name: "9Router",
+        endpoint: "https://router.example.com/internal",
+        apiKey: "test-key",
+        apiKind: .nineRouter
+    )
+
+    await #expect(
+        throws: NineRouterAccountImportError.fileTooLarge("oversized.json")
+    ) {
+        try await NineRouterAccountImportService().importFiles([fileURL], provider: provider)
+    }
+}
+
+@Test func accountImportUsesOneNoStoreQuotaRequest() async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [AccountImportURLProtocol.self]
+    let session = URLSession(configuration: configuration)
+    AccountImportURLProtocol.reset(
+        response: Data(#"{"importedCount":1,"skippedCount":0,"failedCount":0,"results":[{"index":0,"status":"imported"}]}"#.utf8)
+    )
+    let provider = CustomQuotaProvider(
+        name: "9Router",
+        endpoint: "https://router.example.com/internal",
+        apiKey: "test-key",
+        apiKind: .nineRouter
+    )
+    let file = NineRouterCredentialFile(
+        name: "account.json",
+        data: Data(#"{"email":"person@example.com","account_id":"workspace-1","access_token":"access-value","refresh_token":"refresh-value"}"#.utf8)
+    )
+
+    let result = try await NineRouterAccountImportService(session: session).importFiles(
+        [file],
+        provider: provider
+    )
+    #expect(result.importedCount == 1)
+
+    let captured = try #require(AccountImportURLProtocol.requestSnapshot())
+    #expect(captured.request.httpMethod == "POST")
+    #expect(captured.request.url?.path == "/internal/v1/quota")
+    #expect(captured.request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
+    #expect(captured.request.value(forHTTPHeaderField: "Cache-Control") == "no-store")
+    let body = try #require(captured.body)
+    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    #expect(json["operation"] as? String == "bulk_import_codex")
+    let accounts = try #require(json["accounts"] as? [[String: Any]])
+    #expect(accounts.count == 1)
+    #expect(accounts[0]["accountId"] as? String == "workspace-1")
+    #expect(accounts[0]["accessToken"] as? String == "access-value")
+    #expect(accounts[0]["access_token"] == nil)
+}
+
 @Test func quotaIndicatorBandsMatchDisplayedPercentages() {
     #expect(QuotaIndicatorBand(remaining: nil) == .unavailable)
     #expect(QuotaIndicatorBand(remaining: .nan) == .unavailable)
@@ -501,6 +594,72 @@ private final class CachedRoutingURLProtocol: URLProtocol {
                 body: request.httpBody ?? requestBody(from: request.httpBodyStream)
             ))
             if !Self.responses.isEmpty { responseData = Self.responses.removeFirst() }
+        }
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+              ) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: responseData)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    private func requestBody(from stream: InputStream?) -> Data? {
+        guard let stream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data.isEmpty ? nil : data
+    }
+}
+
+private final class AccountImportURLProtocol: URLProtocol {
+    private struct CapturedRequest: Sendable {
+        let request: URLRequest
+        let body: Data?
+    }
+
+    nonisolated(unsafe) private static var captured: CapturedRequest?
+    nonisolated(unsafe) private static var response = Data()
+    private static let lock = NSLock()
+
+    static func reset(response: Data) {
+        lock.withLock {
+            captured = nil
+            self.response = response
+        }
+    }
+
+    static func requestSnapshot() -> (request: URLRequest, body: Data?)? {
+        lock.withLock { captured }
+            .map { (request: $0.request, body: $0.body) }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        var responseData = Data()
+        Self.lock.withLock {
+            Self.captured = CapturedRequest(
+                request: request,
+                body: request.httpBody ?? requestBody(from: request.httpBodyStream)
+            )
+            responseData = Self.response
         }
         guard let url = request.url,
               let response = HTTPURLResponse(
