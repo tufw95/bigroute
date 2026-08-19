@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// Shared quota bands keep the app and widget aligned with the rounded value shown to users.
 public enum QuotaIndicatorBand: Equatable, Sendable {
@@ -313,10 +314,11 @@ public struct CodexQuotaResponse: Codable, Equatable, Sendable {
     public let data: [CodexQuotaAccount]
 }
 
-public enum QuotaServiceError: Error, LocalizedError, Equatable {
+public enum QuotaServiceError: Error, LocalizedError, Equatable, Sendable {
     case unsupported
     case unauthorized
     case invalidResponse
+    case requestTimedOut
     case serverError(Int)
 
     public var errorDescription: String? {
@@ -327,17 +329,103 @@ public enum QuotaServiceError: Error, LocalizedError, Equatable {
             return "The saved API key cannot access this quota endpoint."
         case .invalidResponse:
             return "The router returned an invalid quota response."
+        case .requestTimedOut:
+            return "9Router quota aggregation is unavailable; showing cached data."
         case let .serverError(statusCode):
+            if [502, 503, 504].contains(statusCode) {
+                return "9Router quota aggregation is unavailable (HTTP \(statusCode))."
+            }
             return "Router quota is temporarily unavailable (HTTP \(statusCode))."
         }
     }
 }
 
+private enum QuotaRequestPolicy {
+    static let timeoutInterval: TimeInterval = 25
+}
+
+private struct QuotaRequestDeadlineError: Error, Sendable {}
+
+private func quotaData(
+    session: URLSession,
+    request: URLRequest,
+    timeoutInterval: TimeInterval
+) async throws -> (Data, URLResponse) {
+    try await withThrowingTaskGroup(of: (Data, URLResponse).self) { group in
+        group.addTask {
+            try await session.data(for: request)
+        }
+        group.addTask {
+            let nanoseconds = UInt64(max(0, timeoutInterval) * 1_000_000_000)
+            try await Task.sleep(nanoseconds: nanoseconds)
+            throw QuotaRequestDeadlineError()
+        }
+        defer { group.cancelAll() }
+        guard let result = try await group.next() else {
+            throw QuotaRequestDeadlineError()
+        }
+        return result
+    }
+}
+
+private enum QuotaNetworkDiagnostics {
+    static let logger = Logger(
+        subsystem: "com.routerquota.app",
+        category: "QuotaNetwork"
+    )
+
+    static func started(request: URLRequest, forceRefresh: Bool) {
+        let path = request.url?.path ?? "unknown"
+        logger.info(
+            "Quota GET started path=\(path, privacy: .public) forced=\(forceRefresh, privacy: .public)"
+        )
+    }
+
+    static func finished(
+        request: URLRequest,
+        response: HTTPURLResponse,
+        bytes: Int,
+        elapsed: TimeInterval
+    ) {
+        let path = request.url?.path ?? "unknown"
+        let rawCacheState = response.value(forHTTPHeaderField: "X-9Router-Quota-Cache")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let allowedCacheStates = ["hit", "miss", "shared", "stale", "throttled"]
+        let cacheState = rawCacheState.flatMap { allowedCacheStates.contains($0) ? $0 : nil } ?? "other"
+        logger.info(
+            "Quota GET finished path=\(path, privacy: .public) status=\(response.statusCode, privacy: .public) bytes=\(bytes, privacy: .public) elapsed=\(elapsed, privacy: .public)s cache=\(cacheState, privacy: .public)"
+        )
+    }
+
+    static func failed(request: URLRequest, error: Error, elapsed: TimeInterval) {
+        let path = request.url?.path ?? "unknown"
+        let category: String
+        if let urlError = error as? URLError {
+            category = urlError.code.rawValue.description
+        } else if let quotaError = error as? QuotaServiceError {
+            category = String(describing: quotaError)
+        } else {
+            category = String(describing: type(of: error))
+        }
+        logger.error(
+            "Quota GET failed path=\(path, privacy: .public) category=\(category, privacy: .public) elapsed=\(elapsed, privacy: .public)s"
+        )
+    }
+}
+
 public final class QuotaService: @unchecked Sendable {
     private let session: URLSession
+    private let timeoutInterval: TimeInterval
 
     public init(session: URLSession = .shared) {
         self.session = session
+        self.timeoutInterval = QuotaRequestPolicy.timeoutInterval
+    }
+
+    init(session: URLSession, timeoutInterval: TimeInterval) {
+        self.session = session
+        self.timeoutInterval = timeoutInterval
     }
 
     public func fetch(
@@ -362,27 +450,71 @@ public final class QuotaService: @unchecked Sendable {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-        request.timeoutInterval = 25
+        request.timeoutInterval = timeoutInterval
 
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw QuotaServiceError.invalidResponse
-        }
-        switch http.statusCode {
-        case 200..<300:
-            break
-        case 401, 403:
-            throw QuotaServiceError.unauthorized
-        case 404, 405:
-            throw QuotaServiceError.unsupported
-        default:
-            throw QuotaServiceError.serverError(http.statusCode)
-        }
-
+        QuotaNetworkDiagnostics.started(request: request, forceRefresh: forceRefresh)
+        let startedAt = Date()
         do {
-            return try JSONDecoder().decode(CodexQuotaResponse.self, from: data)
+            let (data, response) = try await quotaData(
+                session: session,
+                request: request,
+                timeoutInterval: timeoutInterval
+            )
+            guard let http = response as? HTTPURLResponse else {
+                throw QuotaServiceError.invalidResponse
+            }
+            QuotaNetworkDiagnostics.finished(
+                request: request,
+                response: http,
+                bytes: data.count,
+                elapsed: Date().timeIntervalSince(startedAt)
+            )
+            switch http.statusCode {
+            case 200..<300:
+                break
+            case 401, 403:
+                throw QuotaServiceError.unauthorized
+            case 404, 405:
+                throw QuotaServiceError.unsupported
+            default:
+                throw QuotaServiceError.serverError(http.statusCode)
+            }
+
+            do {
+                return try JSONDecoder().decode(CodexQuotaResponse.self, from: data)
+            } catch {
+                throw QuotaServiceError.invalidResponse
+            }
+        } catch let error as QuotaServiceError {
+            QuotaNetworkDiagnostics.failed(
+                request: request,
+                error: error,
+                elapsed: Date().timeIntervalSince(startedAt)
+            )
+            throw error
+        } catch let error as URLError where error.code == .timedOut {
+            let timeout = QuotaServiceError.requestTimedOut
+            QuotaNetworkDiagnostics.failed(
+                request: request,
+                error: timeout,
+                elapsed: Date().timeIntervalSince(startedAt)
+            )
+            throw timeout
+        } catch is QuotaRequestDeadlineError {
+            let timeout = QuotaServiceError.requestTimedOut
+            QuotaNetworkDiagnostics.failed(
+                request: request,
+                error: timeout,
+                elapsed: Date().timeIntervalSince(startedAt)
+            )
+            throw timeout
         } catch {
-            throw QuotaServiceError.invalidResponse
+            QuotaNetworkDiagnostics.failed(
+                request: request,
+                error: error,
+                elapsed: Date().timeIntervalSince(startedAt)
+            )
+            throw error
         }
     }
 
@@ -427,9 +559,16 @@ public struct OmniQuotaResponse: Equatable, Sendable {
 
 public final class OmniQuotaService: @unchecked Sendable {
     private let session: URLSession
+    private let timeoutInterval: TimeInterval
 
     public init(session: URLSession = .shared) {
         self.session = session
+        self.timeoutInterval = QuotaRequestPolicy.timeoutInterval
+    }
+
+    init(session: URLSession, timeoutInterval: TimeInterval) {
+        self.session = session
+        self.timeoutInterval = timeoutInterval
     }
 
     public static func preferredCredential(
@@ -454,12 +593,14 @@ public final class OmniQuotaService: @unchecked Sendable {
         let quotaRequest = try Self.request(
             apiKey: apiKey,
             url: Self.quotaURL(from: safeBaseURL),
-            forceRefresh: forceRefresh
+            forceRefresh: forceRefresh,
+            timeoutInterval: timeoutInterval
         )
         let providerLimitsRequest = try Self.request(
             apiKey: apiKey,
             url: Self.providerLimitsURL(from: safeBaseURL),
-            forceRefresh: forceRefresh
+            forceRefresh: forceRefresh,
+            timeoutInterval: timeoutInterval
         )
 
         async let quotaResult = load(request: quotaRequest)
@@ -542,26 +683,71 @@ public final class OmniQuotaService: @unchecked Sendable {
     }
 
     private func load(request: URLRequest) async throws -> Data {
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw QuotaServiceError.invalidResponse
-        }
-        switch http.statusCode {
-        case 200..<300:
-            return data
-        case 401, 403:
-            throw QuotaServiceError.unauthorized
-        case 404, 405:
-            throw QuotaServiceError.unsupported
-        default:
-            throw QuotaServiceError.serverError(http.statusCode)
+        QuotaNetworkDiagnostics.started(request: request, forceRefresh: false)
+        let startedAt = Date()
+        do {
+            let (data, response) = try await quotaData(
+                session: session,
+                request: request,
+                timeoutInterval: timeoutInterval
+            )
+            guard let http = response as? HTTPURLResponse else {
+                throw QuotaServiceError.invalidResponse
+            }
+            QuotaNetworkDiagnostics.finished(
+                request: request,
+                response: http,
+                bytes: data.count,
+                elapsed: Date().timeIntervalSince(startedAt)
+            )
+            switch http.statusCode {
+            case 200..<300:
+                return data
+            case 401, 403:
+                throw QuotaServiceError.unauthorized
+            case 404, 405:
+                throw QuotaServiceError.unsupported
+            default:
+                throw QuotaServiceError.serverError(http.statusCode)
+            }
+        } catch let error as QuotaServiceError {
+            QuotaNetworkDiagnostics.failed(
+                request: request,
+                error: error,
+                elapsed: Date().timeIntervalSince(startedAt)
+            )
+            throw error
+        } catch let error as URLError where error.code == .timedOut {
+            let timeout = QuotaServiceError.requestTimedOut
+            QuotaNetworkDiagnostics.failed(
+                request: request,
+                error: timeout,
+                elapsed: Date().timeIntervalSince(startedAt)
+            )
+            throw timeout
+        } catch is QuotaRequestDeadlineError {
+            let timeout = QuotaServiceError.requestTimedOut
+            QuotaNetworkDiagnostics.failed(
+                request: request,
+                error: timeout,
+                elapsed: Date().timeIntervalSince(startedAt)
+            )
+            throw timeout
+        } catch {
+            QuotaNetworkDiagnostics.failed(
+                request: request,
+                error: error,
+                elapsed: Date().timeIntervalSince(startedAt)
+            )
+            throw error
         }
     }
 
     private static func request(
         apiKey: String,
         url: URL,
-        forceRefresh: Bool
+        forceRefresh: Bool = false,
+        timeoutInterval: TimeInterval
     ) throws -> URLRequest {
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         if forceRefresh {
@@ -576,7 +762,7 @@ public final class OmniQuotaService: @unchecked Sendable {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-        request.timeoutInterval = 25
+        request.timeoutInterval = timeoutInterval
         return request
     }
 

@@ -4,7 +4,14 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.1] - 2026-08-19
+
+### Fixed
+
+- Quota refreshes send the `refresh=1` query flag on forced refreshes so routers refresh their snapshot when requested.
+- Increased quota request timeout to 25 seconds to allow multi-account routers to aggregate and return live account quotas.
+- Removed the 5-minute error retry backoff to ensure scheduled intervals and menu-bar popover opens refresh quota promptly.
+- Added automatic fallback to preview and apply in manual routing actions when 9Router's cached snapshot has expired (HTTP 409).
 
 ## [1.4.0] - 2026-08-14
 

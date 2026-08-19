@@ -149,17 +149,23 @@ public final class NineRouterManualRoutingService: @unchecked Sendable {
         provider: CustomQuotaProvider
     ) async throws -> NineRouterRoutingResult {
         try validate(provider)
-        let data = try await send(
-            provider: provider,
-            body: RequestBody(
-                operation: "apply_cached",
-                action: action,
-                previewToken: nil
-            ),
-            timeoutInterval: 15
-        )
         do {
+            let data = try await send(
+                provider: provider,
+                body: RequestBody(
+                    operation: "apply_cached",
+                    action: action,
+                    previewToken: nil
+                ),
+                timeoutInterval: 15
+            )
             return try JSONDecoder().decode(NineRouterRoutingResult.self, from: data)
+        } catch let error as NineRouterManualRoutingError {
+            if case let .serverError(status, _) = error, status == 409 {
+                let preview = try await preview(action: action, provider: provider)
+                return try await apply(preview: preview, provider: provider)
+            }
+            throw error
         } catch {
             throw NineRouterManualRoutingError.invalidResponse
         }

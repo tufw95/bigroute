@@ -215,7 +215,7 @@ import Testing
     defaults.removePersistentDomain(forName: suiteName)
 }
 
-@Test func customQuotaServiceUsesOnlyReadOnlyQuotaRequests() async throws {
+@Test func customQuotaServiceUsesQuotaRequestsWithConfiguredTimeout() async throws {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [ReadOnlyQuotaURLProtocol.self]
     let session = URLSession(configuration: configuration)
@@ -227,16 +227,35 @@ import Testing
         apiKey: "test-key",
         apiKind: .nineRouter
     )
-    let accounts = try await CustomQuotaService(session: session).fetch(provider: provider)
+    let accounts = try await CustomQuotaService(session: session).fetch(
+        provider: provider,
+        forceRefresh: true
+    )
     #expect(accounts.count == 1)
 
     let requests = ReadOnlyQuotaURLProtocol.requestsSnapshot()
     #expect(requests.count == 1)
     #expect(requests.allSatisfy { $0.httpMethod == "GET" })
+    #expect(requests.allSatisfy { $0.timeoutInterval == 25 })
+    #expect(requests.allSatisfy { $0.url?.query == "refresh=1" })
     #expect(requests.allSatisfy { request in
         let path = request.url?.path ?? ""
         return !path.contains("/api/auth/login") && !path.contains("/api/providers")
     })
+}
+
+@Test func quotaServiceStopsAStalledRequestBeforeTheURLSessionTimeout() async {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [StalledQuotaURLProtocol.self]
+    let service = QuotaService(
+        session: URLSession(configuration: configuration),
+        timeoutInterval: 0.05
+    )
+    let endpoint = URL(string: "https://router.example.com")!
+
+    await #expect(throws: QuotaServiceError.requestTimedOut) {
+        try await service.fetch(apiKey: "test-key", targetBaseURL: endpoint)
+    }
 }
 
 @Test func manualRoutingUsesOnlyTheQuotaEndpointAndPreviewToken() async throws {
@@ -321,6 +340,45 @@ import Testing
     #expect(json["operation"] as? String == "apply_cached")
     #expect(json["action"] as? String == "turn_on_available")
     #expect(json["previewToken"] == nil)
+}
+
+@Test func manualRoutingCachedActionFallsBackToPreviewAndApplyWhenSnapshotExpired() async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [FallbackCachedRoutingURLProtocol.self]
+    let session = URLSession(configuration: configuration)
+    FallbackCachedRoutingURLProtocol.reset(statusResponses: [
+        (statusCode: 409, data: Data(#"{"error":"Quota snapshot expired; refresh and try again"}"#.utf8)),
+        (statusCode: 200, data: Data(#"{"action":"turn_on_available","previewToken":"fallback-token","createdAt":"2026-08-12T00:00:00Z","expiresAt":"2026-08-12T00:02:00Z","thresholdPercent":5,"inspectedCount":2,"skippedCount":0,"candidateCount":1,"candidates":[{"label":"Office","currentIsActive":false,"remainingPercent":50}]}"#.utf8)),
+        (statusCode: 200, data: Data(#"{"action":"turn_on_available","changedCount":1,"skippedCount":0,"changed":[{"id":"office","label":"Office","isActive":true}],"skipped":[]}"#.utf8))
+    ])
+    let provider = CustomQuotaProvider(
+        name: "9Router",
+        endpoint: "https://router.example.com/internal",
+        apiKey: "test-key",
+        apiKind: .nineRouter
+    )
+
+    let result = try await NineRouterManualRoutingService(session: session).applyCached(
+        action: .turnOnAvailable,
+        provider: provider
+    )
+    #expect(result.changedCount == 1)
+    #expect(result.changed.first?.label == "Office")
+
+    let requests = FallbackCachedRoutingURLProtocol.requestsSnapshot()
+    #expect(requests.count == 3)
+    let firstBody = try #require(requests[0].body)
+    let firstJson = try #require(JSONSerialization.jsonObject(with: firstBody) as? [String: Any])
+    #expect(firstJson["operation"] as? String == "apply_cached")
+
+    let secondBody = try #require(requests[1].body)
+    let secondJson = try #require(JSONSerialization.jsonObject(with: secondBody) as? [String: Any])
+    #expect(secondJson["operation"] as? String == "preview")
+
+    let thirdBody = try #require(requests[2].body)
+    let thirdJson = try #require(JSONSerialization.jsonObject(with: thirdBody) as? [String: Any])
+    #expect(thirdJson["operation"] as? String == "apply")
+    #expect(thirdJson["previewToken"] as? String == "fallback-token")
 }
 
 @Test func accountImportParserNormalizesPurchasedCredentialFiles() throws {
@@ -493,6 +551,16 @@ private final class ReadOnlyQuotaURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+private final class StalledQuotaURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {}
+
+    override func stopLoading() {}
+}
+
 private final class PreviewRoutingURLProtocol: URLProtocol {
     private struct CapturedRequest: Sendable {
         let request: URLRequest
@@ -599,6 +667,77 @@ private final class CachedRoutingURLProtocol: URLProtocol {
               let response = HTTPURLResponse(
                 url: url,
                 statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+              ) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: responseData)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    private func requestBody(from stream: InputStream?) -> Data? {
+        guard let stream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data.isEmpty ? nil : data
+    }
+}
+
+private final class FallbackCachedRoutingURLProtocol: URLProtocol {
+    private struct CapturedRequest: Sendable {
+        let request: URLRequest
+        let body: Data?
+    }
+
+    nonisolated(unsafe) private static var requests: [CapturedRequest] = []
+    nonisolated(unsafe) private static var responses: [(statusCode: Int, data: Data)] = []
+    private static let lock = NSLock()
+
+    static func reset(statusResponses: [(statusCode: Int, data: Data)]) {
+        lock.withLock {
+            requests = []
+            self.responses = statusResponses
+        }
+    }
+
+    static func requestsSnapshot() -> [(request: URLRequest, body: Data?)] {
+        lock.withLock { requests }
+            .map { (request: $0.request, body: $0.body) }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        var responseData = Data()
+        var statusCode = 200
+        Self.lock.withLock {
+            Self.requests.append(CapturedRequest(
+                request: request,
+                body: request.httpBody ?? requestBody(from: request.httpBodyStream)
+            ))
+            if !Self.responses.isEmpty {
+                let item = Self.responses.removeFirst()
+                statusCode = item.statusCode
+                responseData = item.data
+            }
+        }
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                url: url,
+                statusCode: statusCode,
                 httpVersion: nil,
                 headerFields: ["Content-Type": "application/json"]
               ) else {

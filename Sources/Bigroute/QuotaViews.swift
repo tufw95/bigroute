@@ -216,7 +216,7 @@ struct DashboardView: View {
                 Text("Bigroute").font(.headline)
                 Group {
                     if let provider = currentProvider {
-                        Text("\(accounts.count) \(provider.name) accounts · \(monitor.configuration.sortOrder.title)")
+                        Text("\(accountCountDescription) \(provider.name) accounts · \(monitor.configuration.sortOrder.title)")
                     } else {
                         Text("Add a provider in Settings")
                     }
@@ -235,7 +235,8 @@ struct DashboardView: View {
                 }
             }
             .buttonStyle(.borderless)
-            .help("Refresh now")
+            .help("Retry the 9Router quota check; cached values stay visible if the server is unavailable")
+            .accessibilityLabel("Refresh quota")
             SettingsLink {
                 Image(systemName: "gearshape")
             }
@@ -271,10 +272,28 @@ struct DashboardView: View {
 
     private var footer: some View {
         HStack(spacing: 6) {
-            if let error = monitor.errorMessage {
+            if monitor.isRefreshing {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(.secondary)
+                Group {
+                    if currentProviderSnapshot?.accounts.isEmpty == false {
+                        Text("Checking 9Router · showing cached quota")
+                    } else {
+                        Text("Checking 9Router…")
+                    }
+                }
+                .lineLimit(1)
+            } else if let error = currentProviderSnapshot?.lastError ?? monitor.errorMessage {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text(error).lineLimit(1)
-            } else if let updatedAt = currentProvider.flatMap({ monitor.snapshot.provider(id: $0.id)?.updatedAt }) {
+                if let updatedAt = currentProviderSnapshot?.updatedAt,
+                   currentProviderSnapshot?.accounts.isEmpty == false {
+                    Text("Cached quota · Updated \(EnglishRelativeTime.string(from: updatedAt)) · 9Router unavailable")
+                        .lineLimit(1)
+                        .help(error)
+                } else {
+                    Text(error).lineLimit(1)
+                }
+            } else if let updatedAt = currentProviderSnapshot?.updatedAt {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 Text("Updated \(EnglishRelativeTime.string(from: updatedAt))")
             } else {
@@ -295,6 +314,17 @@ struct DashboardView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 15)
         .padding(.vertical, 11)
+    }
+
+    private var currentProviderSnapshot: ProviderQuotaSnapshot? {
+        currentProvider.flatMap { monitor.snapshot.provider(id: $0.id) }
+    }
+
+    private var accountCountDescription: String {
+        guard let provider = currentProvider else { return "0" }
+        let total = monitor.snapshot.accounts(for: provider.id).count
+        guard total > accounts.count else { return "\(accounts.count)" }
+        return "\(accounts.count) active / \(total) cached"
     }
 
     private var accounts: [CodexQuotaAccount] {

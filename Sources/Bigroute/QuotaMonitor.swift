@@ -25,6 +25,11 @@ final class QuotaMonitor {
         subsystem: "com.routerquota.app",
         category: "AccountImport"
     )
+    private static let quotaLogger = Logger(
+        subsystem: "com.routerquota.app",
+        category: "QuotaRefresh"
+    )
+    private static let automaticRefreshMinimumInterval: TimeInterval = 15
 
     var configuration: BigrouteConfiguration
     var snapshot: BigrouteSnapshot
@@ -39,6 +44,7 @@ final class QuotaMonitor {
     private var timer: Timer?
     private var pendingWidgetReloadTimer: Timer?
     private var lastWidgetReloadAt: Date?
+    private var lastRefreshAttemptAt: Date?
 
     init() {
         configuration = credentialStore.load()
@@ -210,10 +216,21 @@ final class QuotaMonitor {
     }
 
     func refresh(force: Bool = false) {
+        let now = Date()
         guard !isRefreshing else { return }
+        if !force {
+            if let lastRefreshAttemptAt,
+               now.timeIntervalSince(lastRefreshAttemptAt) < Self.automaticRefreshMinimumInterval {
+                return
+            }
+        }
         isRefreshing = true
+        lastRefreshAttemptAt = now
         let providers = enabledProviders
         let previousSnapshot = snapshot
+        Self.quotaLogger.info(
+            "Refresh started providers=\(providers.count, privacy: .public) forced=\(force, privacy: .public)"
+        )
 
         Task {
             let results = await Self.load(providers: providers, force: force)
@@ -251,6 +268,7 @@ final class QuotaMonitor {
                 generatedAt: now,
                 sortOrder: configuration.sortOrder
             )
+            var persistenceError: String?
             do {
                 try snapshotStore.save(snapshot)
                 Self.widgetLogger.info(
@@ -260,12 +278,19 @@ final class QuotaMonitor {
                 // when the numeric quota values have not changed.
                 reloadWidget(force: force)
             } catch {
-                errorMessage = error.localizedDescription
+                persistenceError = error.localizedDescription
+                errorMessage = persistenceError
                 Self.widgetLogger.error("Could not save widget snapshot: \(error.localizedDescription, privacy: .public)")
             }
 
-            let errors = snapshots.compactMap(\.lastError)
+            var errors = snapshots.compactMap(\.lastError)
+            if let persistenceError {
+                errors.append(persistenceError)
+            }
             errorMessage = errors.isEmpty ? nil : errors.joined(separator: " · ")
+            Self.quotaLogger.info(
+                "Refresh finished errors=\(errors.count, privacy: .public) cachedAccounts=\(self.snapshot.accounts.count, privacy: .public)"
+            )
             isRefreshing = false
         }
     }
