@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [1.4.5] - 2026-08-20
 
+### Added
+
+- Added support for Antigravity (Gemini) router accounts with single-line quota tracking (Gemini 3.6 Flash High), displaying live percentage and reset time alongside ChatGPT accounts.
+
 ### Changed
 
 - Updated manual routing actions to standard complementary thresholds: **Turn Off Empty (0%)** and **Turn On Available (>0%)**.
