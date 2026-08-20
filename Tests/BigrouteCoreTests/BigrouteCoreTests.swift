@@ -236,7 +236,7 @@ import Testing
     let requests = ReadOnlyQuotaURLProtocol.requestsSnapshot()
     #expect(requests.count == 1)
     #expect(requests.allSatisfy { $0.httpMethod == "GET" })
-    #expect(requests.allSatisfy { $0.timeoutInterval == 25 })
+    #expect(requests.allSatisfy { $0.timeoutInterval == 60 })
     #expect(requests.allSatisfy { $0.url?.query == "refresh=1" })
     #expect(requests.allSatisfy { request in
         let path = request.url?.path ?? ""

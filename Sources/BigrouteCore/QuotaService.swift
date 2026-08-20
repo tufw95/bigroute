@@ -341,7 +341,7 @@ public enum QuotaServiceError: Error, LocalizedError, Equatable, Sendable {
 }
 
 private enum QuotaRequestPolicy {
-    static let timeoutInterval: TimeInterval = 25
+    static let timeoutInterval: TimeInterval = 60
 }
 
 private struct QuotaRequestDeadlineError: Error, Sendable {}
@@ -1083,6 +1083,9 @@ public final class CustomQuotaService: @unchecked Sendable {
             do {
                 return try await fetchNine(url: url, key: key, providerID: provider.id, forceRefresh: forceRefresh)
             } catch let firstError {
+                guard Self.isFallbackCandidate(firstError) else {
+                    throw firstError
+                }
                 do {
                     return try await fetchOmni(url: url, key: key, providerID: provider.id, forceRefresh: forceRefresh)
                 } catch let secondError {
@@ -1121,6 +1124,16 @@ public final class CustomQuotaService: @unchecked Sendable {
             forceRefresh: forceRefresh
         )
         return response.accounts.map { $0.sourced(providerID: providerID) }
+    }
+
+    private static func isFallbackCandidate(_ error: Error) -> Bool {
+        guard let quotaError = error as? QuotaServiceError else { return false }
+        switch quotaError {
+        case .unsupported:
+            return true
+        default:
+            return false
+        }
     }
 
     private static func isUnauthorized(_ error: Error) -> Bool {

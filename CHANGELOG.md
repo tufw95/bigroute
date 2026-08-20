@@ -4,6 +4,13 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-08-20
+
+### Fixed
+
+- Increased quota request timeout to 60 seconds to support multi-account routers with high account counts.
+- Fixed auto-detect provider fallback to only attempt OmniRouter when 9Router is explicitly unsupported (HTTP 404/405), preventing erroneous 401 Unauthorized errors on slow responses.
+
 ## [1.4.1] - 2026-08-19
 
 ### Fixed
