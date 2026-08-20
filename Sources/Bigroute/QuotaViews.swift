@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct DashboardView: View {
     @Environment(QuotaMonitor.self) private var monitor
     @Environment(UpdateController.self) private var updateController
+    @AppStorage("hideInactiveAccounts") private var hideInactiveAccounts = false
     @State private var manualActionError: String?
     @State private var manualActionMessage: String?
     @State private var isShowingAccountImporter = false
@@ -139,7 +140,7 @@ struct DashboardView: View {
             Button {
                 runManualAction(.turnOffEmpty)
             } label: {
-                Label("Turn Off Empty", systemImage: NineRouterAccountAction.turnOffEmpty.systemImage)
+                Label("Turn Off Empty (≤1%)", systemImage: NineRouterAccountAction.turnOffEmpty.systemImage)
             }
             .tint(.red)
             Button {
@@ -225,6 +226,15 @@ struct DashboardView: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
+            Button {
+                hideInactiveAccounts.toggle()
+            } label: {
+                Image(systemName: hideInactiveAccounts ? "eye.slash" : "eye")
+                    .foregroundStyle(hideInactiveAccounts ? .secondary : .primary)
+            }
+            .buttonStyle(.borderless)
+            .help(hideInactiveAccounts ? "Show inactive accounts (Off)" : "Hide inactive accounts (Off)")
+            .accessibilityLabel(hideInactiveAccounts ? "Show inactive accounts" : "Hide inactive accounts")
             Button {
                 monitor.refresh(force: true)
             } label: {
@@ -323,28 +333,38 @@ struct DashboardView: View {
     private var accountCountDescription: String {
         guard let provider = currentProvider else { return "0" }
         let total = monitor.snapshot.accounts(for: provider.id).count
-        guard total > accounts.count else { return "\(accounts.count)" }
-        return "\(accounts.count) active / \(total) cached"
+        if hideInactiveAccounts {
+            return "\(accounts.count) active / \(total) total"
+        }
+        let activeCount = monitor.snapshot.accounts(for: provider.id).filter(\.isRoutingActive).count
+        return "\(activeCount) active / \(total) total"
     }
 
     private var accounts: [CodexQuotaAccount] {
         guard let id = currentProvider?.id else { return [] }
-        return monitor.configuration.sortOrder.sorted(monitor.snapshot.accounts(for: id))
+        let allAccounts = monitor.snapshot.accounts(for: id)
+        let filtered = hideInactiveAccounts ? allAccounts.filter(\.isRoutingActive) : allAccounts
+        return monitor.configuration.sortOrder.sorted(filtered)
     }
 
     private var emptyStateTitle: String {
         if monitor.enabledProviders.isEmpty { return "No providers configured" }
+        if hideInactiveAccounts { return "No active accounts" }
         return "No quota data"
     }
 
     private var emptyStateIcon: String {
         if monitor.enabledProviders.isEmpty { return "plus.circle" }
+        if hideInactiveAccounts { return "eye.slash" }
         return "gauge.with.dots.needle.0percent"
     }
 
     private var emptyStateDescription: String {
         if monitor.enabledProviders.isEmpty {
             return "Open Settings to add a quota provider."
+        }
+        if hideInactiveAccounts {
+            return "All accounts are currently turned off. Click the eye icon to view inactive accounts or use Turn On Available."
         }
         return "Check the endpoint and API key in Settings."
     }

@@ -8,7 +8,7 @@ public enum NineRouterAccountAction: String, Codable, CaseIterable, Identifiable
 
     public var title: String {
         switch self {
-        case .turnOffEmpty: "Turn Off Empty"
+        case .turnOffEmpty: "Turn Off Empty (≤1%)"
         case .turnOnAvailable: "Turn On Available"
         }
     }

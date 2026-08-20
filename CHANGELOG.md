@@ -4,6 +4,13 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.4] - 2026-08-20
+
+### Added
+
+- Added an eye toggle button in the dashboard header to quickly show or hide inactive (OFF) accounts.
+- Updated Turn Off Empty threshold and action label to 1% (≤1%) instead of 5% to maximize quota utilization.
+
 ## [1.4.3] - 2026-08-20
 
 ### Fixed
