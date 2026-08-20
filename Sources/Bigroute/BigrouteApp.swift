@@ -138,7 +138,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showPopover(relativeTo button: NSStatusBarButton? = nil) {
         guard let popover, let anchor = button ?? statusItem?.button else { return }
-        monitor.refresh()
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
         NSApp.activate(ignoringOtherApps: true)

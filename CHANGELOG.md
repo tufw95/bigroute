@@ -4,6 +4,13 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.3] - 2026-08-20
+
+### Fixed
+
+- Fixed empty dashboard by displaying all accounts from the provider snapshot with clear routing status badges instead of filtering out inactive accounts.
+- Eliminated unwanted spinning loading states on simple menu-bar popover open.
+
 ## [1.4.2] - 2026-08-20
 
 ### Fixed

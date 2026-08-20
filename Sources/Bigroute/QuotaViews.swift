@@ -329,35 +329,22 @@ struct DashboardView: View {
 
     private var accounts: [CodexQuotaAccount] {
         guard let id = currentProvider?.id else { return [] }
-        let visibleAccounts = monitor.snapshot.accounts(for: id).filter(\.isRoutingActive)
-        return monitor.configuration.sortOrder.sorted(visibleAccounts)
-    }
-
-    private var hasHiddenInactiveAccounts: Bool {
-        guard let id = currentProvider?.id else { return false }
-        return monitor.snapshot.accounts(for: id).contains { !$0.isRoutingActive }
+        return monitor.configuration.sortOrder.sorted(monitor.snapshot.accounts(for: id))
     }
 
     private var emptyStateTitle: String {
         if monitor.enabledProviders.isEmpty { return "No providers configured" }
-        if hasHiddenInactiveAccounts { return "No active accounts" }
         return "No quota data"
     }
 
     private var emptyStateIcon: String {
         if monitor.enabledProviders.isEmpty { return "plus.circle" }
-        if hasHiddenInactiveAccounts { return "person.crop.circle.badge.xmark" }
         return "gauge.with.dots.needle.0percent"
     }
 
     private var emptyStateDescription: String {
         if monitor.enabledProviders.isEmpty {
             return "Open Settings to add a quota provider."
-        }
-        if hasHiddenInactiveAccounts {
-            return supportsManualRouting
-                ? "Accounts turned off in 9Router are hidden. Use Turn On Available to restore eligible accounts."
-                : "Accounts turned off by this provider are hidden."
         }
         return "Check the endpoint and API key in Settings."
     }
@@ -379,12 +366,21 @@ struct QuotaAccountCard: View {
                     .font(.caption2.monospacedDigit().weight(.semibold))
             }
             .frame(width: 36, height: 36)
+            .opacity(account.isRoutingActive ? 1.0 : 0.6)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(account.label)
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
+                    if !account.isRoutingActive {
+                        Text("Off")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(.quaternary, in: Capsule())
+                            .foregroundStyle(.secondary)
+                    }
                     if !account.plan.isEmpty {
                         Text(account.plan)
                             .font(.caption2)
@@ -401,6 +397,7 @@ struct QuotaAccountCard: View {
             Text(quota.map { "\(Int($0.remaining.rounded()))%" } ?? "N/A")
                 .font(.caption.monospacedDigit().weight(.semibold))
                 .foregroundStyle(valueTint)
+                .opacity(account.isRoutingActive ? 1.0 : 0.6)
         }
         .padding(.horizontal, 10)
         .frame(height: 36)
