@@ -140,13 +140,13 @@ struct DashboardView: View {
             Button {
                 runManualAction(.turnOffEmpty)
             } label: {
-                Label("Turn Off Empty (≤1%)", systemImage: NineRouterAccountAction.turnOffEmpty.systemImage)
+                Label("Turn Off Empty (0%)", systemImage: NineRouterAccountAction.turnOffEmpty.systemImage)
             }
             .tint(.red)
             Button {
                 runManualAction(.turnOnAvailable)
             } label: {
-                Label("Turn On Available", systemImage: NineRouterAccountAction.turnOnAvailable.systemImage)
+                Label("Turn On Available (>0%)", systemImage: NineRouterAccountAction.turnOnAvailable.systemImage)
             }
             .tint(.green)
         }
