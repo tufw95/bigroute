@@ -80,34 +80,41 @@ struct DashboardView: View {
                 sectionBlock(
                     title: "Google Antigravity",
                     systemImage: "sparkles",
+                    isGoogle: true,
                     accounts: googleAccounts
                 )
                 sectionBlock(
                     title: "ChatGPT (Codex)",
                     systemImage: "bubble.left.and.bubble.right",
+                    isGoogle: false,
                     accounts: chatGPTAccounts
                 )
             } else if !googleAccounts.isEmpty {
                 sectionBlock(
                     title: "Google Antigravity",
                     systemImage: "sparkles",
+                    isGoogle: true,
                     accounts: googleAccounts
                 )
             } else {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 5) {
-                    ForEach(chatGPTAccounts) { account in
-                        QuotaAccountCard(account: account)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 7)
+                sectionBlock(
+                    title: "ChatGPT (Codex)",
+                    systemImage: "bubble.left.and.bubble.right",
+                    isGoogle: false,
+                    accounts: chatGPTAccounts
+                )
             }
         }
         .padding(.bottom, 8)
     }
 
     @ViewBuilder
-    private func sectionBlock(title: String, systemImage: String, accounts: [CodexQuotaAccount]) -> some View {
+    private func sectionBlock(title: String, systemImage: String, isGoogle: Bool, accounts: [CodexQuotaAccount]) -> some View {
+        let allProviderAccounts = currentProvider.map { monitor.snapshot.accounts(for: $0.id) } ?? []
+        let sectionAll = allProviderAccounts.filter { isGoogle ? $0.isGoogleAntigravity : !$0.isGoogleAntigravity }
+        let activeCount = sectionAll.filter(\.isRoutingActive).count
+        let totalCount = sectionAll.count
+
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: systemImage)
@@ -116,7 +123,7 @@ struct DashboardView: View {
                 Text(title)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.primary)
-                Text("(\(accounts.filter(\.isRoutingActive).count)/\(accounts.count))")
+                Text("(\(activeCount)/\(totalCount))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -186,6 +193,7 @@ struct DashboardView: View {
                 if let manualActionError {
                     Label(manualActionError, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
+                        .help(manualActionError)
                 } else if let manualActionMessage {
                     Label(manualActionMessage, systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
@@ -196,7 +204,9 @@ struct DashboardView: View {
             }
             .font(.caption.weight(.medium))
             .lineLimit(1)
-            Spacer()
+            .truncationMode(.tail)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             if monitor.isRunningManualAction || monitor.isImportingAccounts {
                 ProgressView()
                     .controlSize(.small)
@@ -450,10 +460,12 @@ struct QuotaAccountCard: View {
         HStack(spacing: 10) {
             ZStack {
                 Circle().stroke(.quaternary, lineWidth: 3.5)
-                Circle()
-                    .trim(from: 0, to: max(0, min(1, (quota?.remaining ?? 0) / 100)))
-                    .stroke(tint, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
+                if let rem = quota?.remaining, rem > 0 {
+                    Circle()
+                        .trim(from: 0, to: max(0.02, min(1, rem / 100)))
+                        .stroke(tint, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
                 Text(quota.map { "\(Int($0.remaining.rounded()))" } ?? "–")
                     .font(.caption2.monospacedDigit().weight(.semibold))
             }

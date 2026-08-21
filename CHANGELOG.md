@@ -4,6 +4,14 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.7] - 2026-08-21
+
+### Fixed
+
+- Fixed section count badges to accurately reflect `(active/total)` counts for each provider section (Google Antigravity & ChatGPT) regardless of whether inactive account filter is enabled.
+- Fixed manual routing actions (`Turn Off Empty` / `Turn On Available`) on 9Router backend and eliminated server error dialogs.
+- Improved progress ring rendering for low-percentage accounts and prevented action bar text truncation.
+
 ## [1.4.6] - 2026-08-20
 
 ### Added
