@@ -246,10 +246,34 @@ final class QuotaMonitor {
                     )
                 }
                 if let accounts = result.accounts {
+                    let previousAccounts = previousSnapshot.accounts(for: provider.id)
+                    let previousAccountsByID = Dictionary(
+                        previousAccounts.map { ($0.id, $0) },
+                        uniquingKeysWith: { first, _ in first }
+                    )
+                    let mergedAccounts = accounts.map { account -> CodexQuotaAccount in
+                        let prefixedID = "\(provider.id.uuidString):\(account.id)"
+                        let previous = previousAccountsByID[prefixedID] ?? previousAccountsByID[account.id]
+                        if account.quotas.isEmpty, let previous, !previous.quotas.isEmpty {
+                            return CodexQuotaAccount(
+                                id: account.id,
+                                provider: account.provider,
+                                label: account.label,
+                                plan: (account.plan.isEmpty || account.plan == "unknown") ? previous.plan : account.plan,
+                                limitReached: account.limitReached,
+                                quotas: previous.quotas,
+                                resetCredits: account.resetCredits,
+                                status: account.status,
+                                errorCode: account.errorCode,
+                                isActive: account.isActive
+                            )
+                        }
+                        return account
+                    }
                     return ProviderQuotaSnapshot(
                         id: provider.id,
                         name: provider.name,
-                        accounts: accounts,
+                        accounts: mergedAccounts,
                         updatedAt: now,
                         lastError: nil
                     )

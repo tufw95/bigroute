@@ -268,6 +268,12 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         isActive != false
     }
 
+    public var isGoogleAntigravity: Bool {
+        provider.lowercased().contains("antigravity") ||
+        plan.lowercased().contains("antigravity") ||
+        label.lowercased().contains("antigravity")
+    }
+
     public func sourced(providerID: UUID) -> CodexQuotaAccount {
         let source = providerID.uuidString
         return CodexQuotaAccount(

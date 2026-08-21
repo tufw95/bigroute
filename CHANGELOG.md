@@ -4,6 +4,16 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.6] - 2026-08-20
+
+### Added
+
+- Separated accounts into 2 distinct visual blocks with clean section headers and count badges: **Google Antigravity** and **ChatGPT (Codex)**.
+
+### Fixed
+
+- Fixed intermittent "N/A" quota glitch by persisting last known valid quota and reset times when transient upstream refresh timeouts occur.
+
 ## [1.4.5] - 2026-08-20
 
 ### Added

@@ -66,14 +66,71 @@ struct DashboardView: View {
         }
     }
 
+    private var googleAccounts: [CodexQuotaAccount] {
+        accounts.filter(\.isGoogleAntigravity)
+    }
+
+    private var chatGPTAccounts: [CodexQuotaAccount] {
+        accounts.filter { !$0.isGoogleAntigravity }
+    }
+
     private var accountGrid: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 5) {
-            ForEach(accounts) { account in
-                QuotaAccountCard(account: account)
+        VStack(alignment: .leading, spacing: 14) {
+            if !googleAccounts.isEmpty && !chatGPTAccounts.isEmpty {
+                sectionBlock(
+                    title: "Google Antigravity",
+                    systemImage: "sparkles",
+                    accounts: googleAccounts
+                )
+                sectionBlock(
+                    title: "ChatGPT (Codex)",
+                    systemImage: "bubble.left.and.bubble.right",
+                    accounts: chatGPTAccounts
+                )
+            } else if !googleAccounts.isEmpty {
+                sectionBlock(
+                    title: "Google Antigravity",
+                    systemImage: "sparkles",
+                    accounts: googleAccounts
+                )
+            } else {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 5) {
+                    ForEach(chatGPTAccounts) { account in
+                        QuotaAccountCard(account: account)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 7)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 7)
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private func sectionBlock(title: String, systemImage: String, accounts: [CodexQuotaAccount]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.tint)
+                    .font(.caption.weight(.semibold))
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.primary)
+                Text("(\(accounts.filter(\.isRoutingActive).count)/\(accounts.count))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 4)
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 5) {
+                ForEach(accounts) { account in
+                    QuotaAccountCard(account: account)
+                }
+            }
+            .padding(.horizontal, 14)
+        }
     }
 
     private var preferredHeight: CGFloat {
@@ -89,14 +146,29 @@ struct DashboardView: View {
         naturalContentHeight > maximumHeight
     }
 
-    private var naturalContentHeight: CGFloat {
-        let rowCount = CGFloat((accounts.count + columns.count - 1) / columns.count)
+    private func gridHeight(for count: Int) -> CGFloat {
+        guard count > 0 else { return 0 }
+        let rowCount = CGFloat((count + columns.count - 1) / columns.count)
         let rowGaps = CGFloat(max(0, Int(rowCount) - 1)) * 5
-        let gridHeight = 7 + (rowCount * 36) + rowGaps + 8
+        return (rowCount * 36) + rowGaps
+    }
+
+    private var naturalContentHeight: CGFloat {
+        guard !accounts.isEmpty else {
+            let providerPickerHeight: CGFloat = monitor.enabledProviders.count > 1 ? 44 : 0
+            let routingHeight: CGFloat = supportsManualRouting ? 45 : 0
+            return 280 + providerPickerHeight + routingHeight
+        }
+        let hasGoogle = !googleAccounts.isEmpty
+        let hasChatGPT = !chatGPTAccounts.isEmpty
+        let isSplit = hasGoogle && hasChatGPT
+
+        let headerHeights: CGFloat = isSplit ? (28 * 2 + 14) : (hasGoogle ? 28 : 7)
+        let totalGridHeight = headerHeights + gridHeight(for: googleAccounts.count) + gridHeight(for: chatGPTAccounts.count) + 8
         let providerPickerHeight: CGFloat = monitor.enabledProviders.count > 1 ? 44 : 0
         let routingHeight: CGFloat = supportsManualRouting ? 45 : 0
         let chromeHeight: CGFloat = 65 + 1 + providerPickerHeight + routingHeight + 38
-        return chromeHeight + gridHeight
+        return chromeHeight + totalGridHeight
     }
 
     private var currentProvider: CustomQuotaProvider? {
