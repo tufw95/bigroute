@@ -4,6 +4,14 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.9] - 2026-08-26
+
+### Fixed
+
+- Fixed stale quota caching when accounts get logged out (lost session / token invalidated). 9Router now immediately marks auth errors and clears expired quotas instead of serving old cached data.
+- Added visual `Logged Out` badge and `Session lost · Re-login in 9Router` status on affected cards.
+- Updated `Turn Off Empty` action to automatically disable logged out accounts.
+
 ## [1.4.8] - 2026-08-26
 
 ### Added

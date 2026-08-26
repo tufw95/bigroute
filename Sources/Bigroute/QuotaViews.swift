@@ -469,7 +469,14 @@ struct QuotaAccountCard: View {
                         .background(.quaternary, in: Capsule())
                         .foregroundStyle(.secondary)
                 }
-                if !account.plan.isEmpty {
+                if account.isAuthError || (account.status == "unavailable" && account.quotas.isEmpty) {
+                    Text("Logged Out")
+                        .font(.system(size: 9, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.18), in: Capsule())
+                        .foregroundStyle(.orange)
+                } else if !account.plan.isEmpty {
                     Text(account.plan)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
@@ -479,19 +486,32 @@ struct QuotaAccountCard: View {
             }
             .opacity(account.isRoutingActive ? 1.0 : 0.6)
 
-            QuotaRowView(
-                title: "Session",
-                systemImage: "bolt.fill",
-                quota: account.sessionQuota,
-                isActive: account.isRoutingActive
-            )
+            if account.isAuthError || (account.status == "unavailable" && account.quotas.isEmpty) {
+                HStack(spacing: 5) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.orange)
+                    Text("Session lost · Re-login in 9Router")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxHeight: .infinity)
+            } else {
+                QuotaRowView(
+                    title: "Session",
+                    systemImage: "bolt.fill",
+                    quota: account.sessionQuota,
+                    isActive: account.isRoutingActive
+                )
 
-            QuotaRowView(
-                title: "Weekly",
-                systemImage: "calendar",
-                quota: account.weeklyQuota,
-                isActive: account.isRoutingActive
-            )
+                QuotaRowView(
+                    title: "Weekly",
+                    systemImage: "calendar",
+                    quota: account.weeklyQuota,
+                    isActive: account.isRoutingActive
+                )
+            }
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
@@ -499,7 +519,7 @@ struct QuotaAccountCard: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .stroke(Color.primary.opacity(0.06))
+                .stroke((account.isAuthError || (account.status == "unavailable" && account.quotas.isEmpty)) ? Color.orange.opacity(0.3) : Color.primary.opacity(0.06))
         }
     }
 }

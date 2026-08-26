@@ -271,6 +271,14 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         quotas.first(where: { $0.key == "weekly" })
     }
 
+    public var isAuthError: Bool {
+        errorCode == "auth_required" || errorCode == "token_invalidated"
+    }
+
+    public var isUnavailable: Bool {
+        status.lowercased() == "unavailable" || isAuthError || quotas.isEmpty
+    }
+
     /// Providers that do not expose routing state remain visible.
     public var isRoutingActive: Bool {
         isActive != false
