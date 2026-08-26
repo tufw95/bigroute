@@ -157,7 +157,7 @@ struct DashboardView: View {
         guard count > 0 else { return 0 }
         let rowCount = CGFloat((count + columns.count - 1) / columns.count)
         let rowGaps = CGFloat(max(0, Int(rowCount) - 1)) * 5
-        return (rowCount * 36) + rowGaps
+        return (rowCount * 58) + rowGaps
     }
 
     private var naturalContentHeight: CGFloat {
@@ -454,61 +454,90 @@ struct DashboardView: View {
 
 struct QuotaAccountCard: View {
     let account: CodexQuotaAccount
-    private var quota: CodexQuotaWindow? { account.primaryQuota }
 
     var body: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle().stroke(.quaternary, lineWidth: 3.5)
-                if let rem = quota?.remaining, rem > 0 {
-                    Circle()
-                        .trim(from: 0, to: max(0.02, min(1, rem / 100)))
-                        .stroke(tint, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Text(account.label)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                if !account.isRoutingActive {
+                    Text("Off")
+                        .font(.system(size: 9, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(.quaternary, in: Capsule())
+                        .foregroundStyle(.secondary)
                 }
-                Text(quota.map { "\(Int($0.remaining.rounded()))" } ?? "–")
-                    .font(.caption2.monospacedDigit().weight(.semibold))
+                if !account.plan.isEmpty {
+                    Text(account.plan)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
             }
-            .frame(width: 36, height: 36)
             .opacity(account.isRoutingActive ? 1.0 : 0.6)
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    Text(account.label)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1)
-                    if !account.isRoutingActive {
-                        Text("Off")
-                            .font(.system(size: 9, weight: .bold))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(.quaternary, in: Capsule())
-                            .foregroundStyle(.secondary)
-                    }
-                    if !account.plan.isEmpty {
-                        Text(account.plan)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                }
-                Text(resetText)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 4)
-            Text(quota.map { "\(Int($0.remaining.rounded()))%" } ?? "N/A")
-                .font(.caption.monospacedDigit().weight(.semibold))
-                .foregroundStyle(valueTint)
-                .opacity(account.isRoutingActive ? 1.0 : 0.6)
+            QuotaRowView(
+                title: "Session",
+                systemImage: "bolt.fill",
+                quota: account.sessionQuota,
+                isActive: account.isRoutingActive
+            )
+
+            QuotaRowView(
+                title: "Weekly",
+                systemImage: "calendar",
+                quota: account.weeklyQuota,
+                isActive: account.isRoutingActive
+            )
         }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .frame(height: 58)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .stroke(Color.primary.opacity(0.06))
+        }
+    }
+}
+
+struct QuotaRowView: View {
+    let title: String
+    let systemImage: String
+    let quota: CodexQuotaWindow?
+    let isActive: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ZStack {
+                Circle().stroke(.quaternary, lineWidth: 2.2)
+                if let rem = quota?.remaining, rem > 0 {
+                    Circle()
+                        .trim(from: 0, to: max(0.02, min(1, rem / 100)))
+                        .stroke(tint, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+            }
+            .frame(width: 12, height: 12)
+
+            Text(title)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            Text(resetText)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+
+            Spacer(minLength: 4)
+
+            Text(quota.map { "\(Int($0.remaining.rounded()))%" } ?? "–")
+                .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
+                .foregroundStyle(valueTint)
+                .opacity(isActive ? 1.0 : 0.6)
         }
     }
 
@@ -527,10 +556,10 @@ struct QuotaAccountCard: View {
 
     private var resetText: String {
         guard let raw = quota?.resetAt, let date = QuotaDateParser.date(from: raw) else {
-            return account.status.capitalized
+            return ""
         }
-        if date <= Date() { return "Refresh pending" }
-        return "Refreshes \(EnglishRelativeTime.string(from: date))"
+        if date <= Date() { return "· pending" }
+        return "· \(EnglishRelativeTime.string(from: date))"
     }
 }
 

@@ -4,6 +4,13 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.8] - 2026-08-26
+
+### Added
+
+- Redesigned quota account cards into a clean 2-row layout displaying both **Session quota** (4-5h / Flash cycle) and **Weekly quota** (7-day cycle) with distinct progress rings, reset times, and percentage badges.
+- Updated 9Router backend service to extract and normalize both session and weekly quota windows for ChatGPT and Google Antigravity accounts.
+
 ## [1.4.7] - 2026-08-21
 
 ### Fixed

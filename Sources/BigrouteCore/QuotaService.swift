@@ -263,6 +263,14 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         quotas.first(where: { $0.key == "session" }) ?? quotas.first
     }
 
+    public var sessionQuota: CodexQuotaWindow? {
+        quotas.first(where: { $0.key == "session" }) ?? quotas.first
+    }
+
+    public var weeklyQuota: CodexQuotaWindow? {
+        quotas.first(where: { $0.key == "weekly" })
+    }
+
     /// Providers that do not expose routing state remain visible.
     public var isRoutingActive: Bool {
         isActive != false
