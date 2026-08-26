@@ -511,32 +511,36 @@ struct QuotaRowView: View {
     let isActive: Bool
 
     var body: some View {
-        HStack(spacing: 5) {
-            ZStack {
-                Circle().stroke(.quaternary, lineWidth: 2.2)
-                if let rem = quota?.remaining, rem > 0 {
-                    Circle()
-                        .trim(from: 0, to: max(0.02, min(1, rem / 100)))
-                        .stroke(tint, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                }
-            }
-            .frame(width: 12, height: 12)
-
+        HStack(spacing: 6) {
             Text(title)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
+                .frame(width: 42, alignment: .leading)
 
-            Text(resetText)
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.08))
+                    if let rem = quota?.remaining, rem > 0 {
+                        Capsule()
+                            .fill(tint)
+                            .frame(width: max(3, geo.size.width * CGFloat(min(100, rem) / 100)))
+                    }
+                }
+            }
+            .frame(height: 4.5)
 
-            Spacer(minLength: 4)
+            if !resetText.isEmpty {
+                Text(resetText)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
 
             Text(quota.map { "\(Int($0.remaining.rounded()))%" } ?? "–")
                 .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
                 .foregroundStyle(valueTint)
+                .frame(minWidth: 32, alignment: .trailing)
                 .opacity(isActive ? 1.0 : 0.6)
         }
     }
@@ -558,8 +562,8 @@ struct QuotaRowView: View {
         guard let raw = quota?.resetAt, let date = QuotaDateParser.date(from: raw) else {
             return ""
         }
-        if date <= Date() { return "· pending" }
-        return "· \(EnglishRelativeTime.string(from: date))"
+        if date <= Date() { return "pending" }
+        return EnglishRelativeTime.string(from: date)
     }
 }
 
