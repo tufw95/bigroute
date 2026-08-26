@@ -469,13 +469,27 @@ struct QuotaAccountCard: View {
                         .background(.quaternary, in: Capsule())
                         .foregroundStyle(.secondary)
                 }
-                if account.isAuthError || (account.status == "unavailable" && account.quotas.isEmpty) {
+                if account.isFreePlan {
+                    Text("Free / Expired")
+                        .font(.system(size: 9, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.red.opacity(0.18), in: Capsule())
+                        .foregroundStyle(.red)
+                } else if account.isAuthError {
                     Text("Logged Out")
                         .font(.system(size: 9, weight: .bold))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(Color.orange.opacity(0.18), in: Capsule())
                         .foregroundStyle(.orange)
+                } else if account.status == "unavailable" && account.quotas.isEmpty {
+                    Text("Unavailable")
+                        .font(.system(size: 9, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.secondary.opacity(0.18), in: Capsule())
+                        .foregroundStyle(.secondary)
                 } else if !account.plan.isEmpty {
                     Text(account.plan)
                         .font(.caption2)
@@ -486,12 +500,34 @@ struct QuotaAccountCard: View {
             }
             .opacity(account.isRoutingActive ? 1.0 : 0.6)
 
-            if account.isAuthError || (account.status == "unavailable" && account.quotas.isEmpty) {
+            if account.isFreePlan {
+                HStack(spacing: 5) {
+                    Image(systemName: "xmark.octagon.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.red)
+                    Text("Plan expired (Free tier) · Re-subscribe")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxHeight: .infinity)
+            } else if account.isAuthError {
                 HStack(spacing: 5) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 10))
                         .foregroundStyle(.orange)
                     Text("Session lost · Re-login in 9Router")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxHeight: .infinity)
+            } else if account.status == "unavailable" && account.quotas.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                    Text("Account unavailable · Check in 9Router")
                         .font(.system(size: 9.5))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -519,7 +555,11 @@ struct QuotaAccountCard: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .stroke((account.isAuthError || (account.status == "unavailable" && account.quotas.isEmpty)) ? Color.orange.opacity(0.3) : Color.primary.opacity(0.06))
+                .stroke(
+                    account.isFreePlan ? Color.red.opacity(0.3) :
+                    account.isAuthError ? Color.orange.opacity(0.3) :
+                    Color.primary.opacity(0.06)
+                )
         }
     }
 }

@@ -4,6 +4,14 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.10] - 2026-08-26
+
+### Fixed
+
+- Added automatic detection and exclusion of expired ChatGPT accounts that downgraded to Free tier (`plan: "free"`). 9Router now marks them as unavailable (`plan_free`) and clears quota data.
+- Added visual `Free / Expired` red badge and `Plan expired (Free tier) · Re-subscribe` notice on account cards.
+- Updated `Turn Off Empty` to automatically disable Free-tier accounts and excluded them from `Turn On Available`.
+
 ## [1.4.9] - 2026-08-26
 
 ### Fixed

@@ -271,12 +271,16 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
         quotas.first(where: { $0.key == "weekly" })
     }
 
+    public var isFreePlan: Bool {
+        plan.lowercased() == "free" || errorCode == "plan_free" || errorCode == "subscription_expired"
+    }
+
     public var isAuthError: Bool {
         errorCode == "auth_required" || errorCode == "token_invalidated"
     }
 
     public var isUnavailable: Bool {
-        status.lowercased() == "unavailable" || isAuthError || quotas.isEmpty
+        status.lowercased() == "unavailable" || isAuthError || isFreePlan || quotas.isEmpty
     }
 
     /// Providers that do not expose routing state remain visible.
