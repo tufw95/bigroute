@@ -260,15 +260,15 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
     }
 
     public var primaryQuota: CodexQuotaWindow? {
-        quotas.first(where: { $0.key == "session" || $0.key == "gemini" }) ?? quotas.first
+        quotas.first(where: { $0.key == "session" }) ?? quotas.first
     }
 
     public var sessionQuota: CodexQuotaWindow? {
-        quotas.first(where: { $0.key == "session" || $0.key == "gemini" }) ?? quotas.first
+        quotas.first(where: { $0.key == "session" }) ?? quotas.first
     }
 
     public var weeklyQuota: CodexQuotaWindow? {
-        quotas.first(where: { $0.key == "weekly" || $0.key == "claude" }) ?? (quotas.count > 1 ? quotas[1] : nil)
+        quotas.first(where: { $0.key == "weekly" })
     }
 
     public var isFreePlan: Bool {

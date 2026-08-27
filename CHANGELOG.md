@@ -4,6 +4,13 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.12] - 2026-08-27
+
+### Fixed
+
+- Removed secondary quota row for Google Antigravity, reverting to a clean single-row Flash bar layout until 9Router implements official weekly support.
+- Kept 2-row layout (Session & Weekly) exclusively for ChatGPT accounts.
+
 ## [1.4.11] - 2026-08-27
 
 ### Fixed

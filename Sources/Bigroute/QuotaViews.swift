@@ -153,11 +153,12 @@ struct DashboardView: View {
         naturalContentHeight > maximumHeight
     }
 
-    private func gridHeight(for count: Int) -> CGFloat {
+    private func gridHeight(for count: Int, isGoogle: Bool = false) -> CGFloat {
         guard count > 0 else { return 0 }
         let rowCount = CGFloat((count + columns.count - 1) / columns.count)
         let rowGaps = CGFloat(max(0, Int(rowCount) - 1)) * 5
-        return (rowCount * 58) + rowGaps
+        let cardHeight: CGFloat = isGoogle ? 40 : 58
+        return (rowCount * cardHeight) + rowGaps
     }
 
     private var naturalContentHeight: CGFloat {
@@ -171,7 +172,7 @@ struct DashboardView: View {
         let isSplit = hasGoogle && hasChatGPT
 
         let headerHeights: CGFloat = isSplit ? (28 * 2 + 14) : (hasGoogle ? 28 : 7)
-        let totalGridHeight = headerHeights + gridHeight(for: googleAccounts.count) + gridHeight(for: chatGPTAccounts.count) + 8
+        let totalGridHeight = headerHeights + gridHeight(for: googleAccounts.count, isGoogle: true) + gridHeight(for: chatGPTAccounts.count, isGoogle: false) + 8
         let providerPickerHeight: CGFloat = monitor.enabledProviders.count > 1 ? 44 : 0
         let routingHeight: CGFloat = supportsManualRouting ? 45 : 0
         let chromeHeight: CGFloat = 65 + 1 + providerPickerHeight + routingHeight + 38
@@ -533,17 +534,24 @@ struct QuotaAccountCard: View {
                     Spacer()
                 }
                 .frame(maxHeight: .infinity)
+            } else if account.isGoogleAntigravity {
+                QuotaRowView(
+                    title: "Flash",
+                    systemImage: "bolt.fill",
+                    quota: account.primaryQuota,
+                    isActive: account.isRoutingActive
+                )
             } else {
                 QuotaRowView(
-                    title: account.isGoogleAntigravity ? "Gemini" : "Session",
-                    systemImage: account.isGoogleAntigravity ? "sparkles" : "bolt.fill",
+                    title: "Session",
+                    systemImage: "bolt.fill",
                     quota: account.sessionQuota,
                     isActive: account.isRoutingActive
                 )
 
                 QuotaRowView(
-                    title: account.isGoogleAntigravity ? "Claude" : "Weekly",
-                    systemImage: account.isGoogleAntigravity ? "brain.head.profile" : "calendar",
+                    title: "Weekly",
+                    systemImage: "calendar",
                     quota: account.weeklyQuota,
                     isActive: account.isRoutingActive
                 )
@@ -551,7 +559,7 @@ struct QuotaAccountCard: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .frame(height: 58)
+        .frame(height: account.isGoogleAntigravity ? 40 : 58)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
