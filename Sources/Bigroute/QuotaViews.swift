@@ -535,15 +535,15 @@ struct QuotaAccountCard: View {
                 .frame(maxHeight: .infinity)
             } else {
                 QuotaRowView(
-                    title: "Session",
-                    systemImage: "bolt.fill",
+                    title: account.isGoogleAntigravity ? "Gemini" : "Session",
+                    systemImage: account.isGoogleAntigravity ? "sparkles" : "bolt.fill",
                     quota: account.sessionQuota,
                     isActive: account.isRoutingActive
                 )
 
                 QuotaRowView(
-                    title: "Weekly",
-                    systemImage: "calendar",
+                    title: account.isGoogleAntigravity ? "Claude" : "Weekly",
+                    systemImage: account.isGoogleAntigravity ? "brain.head.profile" : "calendar",
                     quota: account.weeklyQuota,
                     isActive: account.isRoutingActive
                 )

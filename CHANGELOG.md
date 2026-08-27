@@ -4,6 +4,13 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.11] - 2026-08-27
+
+### Fixed
+
+- Updated Google Antigravity account cards to display accurate model group labels (**Gemini** & **Claude**) with real-time bucket reset dates instead of forcing a generic "Weekly" title.
+- Preserved **Session** (5h) and **Weekly** (7d) metrics for ChatGPT accounts where authentic 7-day windows exist.
+
 ## [1.4.10] - 2026-08-26
 
 ### Fixed
