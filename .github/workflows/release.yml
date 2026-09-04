@@ -20,7 +20,6 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
       APP_BUNDLE_ID: com.routerquota.app
-      WIDGET_BUNDLE_ID: com.routerquota.app.widget
       SPARKLE_PUBLIC_KEY: M3PQhg/ygRWtEttOkX73X9GXG4LXfCwMDNr/aUoxUMQ=
       MACOS_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_BASE64 }}
       MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
@@ -82,7 +81,6 @@ jobs:
             MACOS_DEVELOPER_ID_CERTIFICATE_BASE64
             MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD
             MACOS_APP_PROVISIONING_PROFILE_BASE64
-            MACOS_WIDGET_PROVISIONING_PROFILE_BASE64
             APPLE_ID
             APPLE_TEAM_ID
             APPLE_APP_PASSWORD
@@ -110,16 +108,14 @@ jobs:
           set -euo pipefail
           certificate_path="$RUNNER_TEMP/developer-id.p12"
           app_profile_path="$RUNNER_TEMP/Bigroute.provisionprofile"
-          widget_profile_path="$RUNNER_TEMP/BigrouteWidget.provisionprofile"
           sparkle_key_path="$RUNNER_TEMP/sparkle-ed25519-private-key"
           keychain_path="$RUNNER_TEMP/bigroute-signing.keychain-db"
           keychain_password="$(openssl rand -hex 32)"
 
           printf '%s' "$MACOS_DEVELOPER_ID_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
           printf '%s' "$MACOS_APP_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$app_profile_path"
-          printf '%s' "$MACOS_WIDGET_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$widget_profile_path"
           printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY_BASE64" | base64 --decode > "$sparkle_key_path"
-          chmod 600 "$certificate_path" "$app_profile_path" "$widget_profile_path" "$sparkle_key_path"
+          chmod 600 "$certificate_path" "$app_profile_path" "$sparkle_key_path"
 
           security create-keychain -p "$keychain_password" "$keychain_path"
           security set-keychain-settings -lut 21600 "$keychain_path"
@@ -143,7 +139,6 @@ jobs:
             echo "SIGN_IDENTITY=$identity"
             echo "SIGNING_KEYCHAIN_PATH=$keychain_path"
             echo "APP_PROVISIONING_PROFILE_PATH=$app_profile_path"
-            echo "WIDGET_PROVISIONING_PROFILE_PATH=$widget_profile_path"
             echo "SPARKLE_PRIVATE_KEY_PATH=$sparkle_key_path"
           } >> "$GITHUB_ENV"
 
@@ -186,14 +181,9 @@ jobs:
           spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
           lipo "$app/Contents/MacOS/Bigroute" -verify_arch arm64
           lipo "$app/Contents/MacOS/Bigroute" -verify_arch x86_64
-          widget_bundle="$app/Contents/PlugIns/BigrouteWidget.appex"
-          widget="$widget_bundle/Contents/MacOS/BigrouteWidget"
-          lipo "$widget" -verify_arch arm64
-          lipo "$widget" -verify_arch x86_64
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$app/Contents/Info.plist")" = "Bigroute"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "$APP_BUNDLE_ID"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$widget_bundle/Contents/Info.plist")" = "$WIDGET_BUNDLE_ID"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")" = "$SPARKLE_PUBLIC_KEY"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app/Contents/Info.plist")" \
             = "https://github.com/${{ github.repository }}/releases/download/stable-channel/appcast.xml"

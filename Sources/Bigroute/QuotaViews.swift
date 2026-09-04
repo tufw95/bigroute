@@ -52,7 +52,6 @@ struct DashboardView: View {
         }
         .frame(width: contentWidth, height: preferredHeight)
         .background(.regularMaterial)
-        .animation(.snappy(duration: 0.2), value: preferredHeight)
         .onChange(of: monitor.selectedProviderID) { _, _ in
             manualActionError = nil
             manualActionMessage = nil
@@ -586,13 +585,15 @@ struct QuotaRowView: View {
                 .frame(width: 42, alignment: .leading)
 
             GeometryReader { geo in
+                let width = geo.size.width
+                let rem = quota?.remaining ?? 0
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color.primary.opacity(0.08))
-                    if let rem = quota?.remaining, rem > 0 {
+                    if rem > 0 {
                         Capsule()
                             .fill(tint)
-                            .frame(width: max(3, geo.size.width * CGFloat(min(100, rem) / 100)))
+                            .frame(width: max(3, width * CGFloat(min(100, rem) / 100)))
                     }
                 }
             }
@@ -700,7 +701,7 @@ struct SettingsView: View {
                         Text(order.title).tag(order)
                     }
                 }
-                Text("Changes apply immediately to the menu bar and every widget. Accounts without the selected value stay at the end.")
+                Text("Changes apply immediately to the menu bar. Accounts without the selected value stay at the end.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -711,7 +712,7 @@ struct SettingsView: View {
                     value: $monitor.configuration.refreshIntervalMinutes,
                     in: 1...60
                 )
-                Text("The app refreshes widget data on the selected schedule and asks WidgetKit to redraw at most every 5 minutes. Requests inside that window are queued, Refresh Now asks for an immediate redraw, and the widget has a 5-minute fallback. macOS may still delay the exact timing.")
+                Text("The app refreshes provider data on the selected schedule.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack {
@@ -763,7 +764,7 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) { providerToDelete = nil }
         } message: {
-            Text("Its saved API key and cached widget data will be removed.")
+            Text("Its saved API key will be removed.")
         }
     }
 

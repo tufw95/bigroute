@@ -20,7 +20,6 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
       APP_BUNDLE_ID: com.routerquota.app
-      WIDGET_BUNDLE_ID: com.routerquota.app.widget
       OFFICE_SIGNING_CERT_SHA1: AED61665255B3E8DBD914C8C65A401B7B8902FD8
       SPARKLE_PUBLIC_KEY: M3PQhg/ygRWtEttOkX73X9GXG4LXfCwMDNr/aUoxUMQ=
 
@@ -179,7 +178,6 @@ jobs:
         run: |
           set -euo pipefail
           app="dist/Bigroute.app"
-          widget="$app/Contents/PlugIns/BigrouteWidget.appex"
           dmg="dist/Bigroute-$VERSION.dmg"
           zip="dist/Bigroute-$VERSION.zip"
           appcast="dist/appcast.xml"
@@ -193,7 +191,6 @@ jobs:
           unzip -tq "$zip" >/dev/null
           for office_code in \
             "$app" \
-            "$widget" \
             "$app/Contents/Frameworks/Sparkle.framework" \
             "$app/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" \
             "$app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc" \
@@ -207,12 +204,9 @@ jobs:
           done
           lipo "$app/Contents/MacOS/Bigroute" -verify_arch arm64
           lipo "$app/Contents/MacOS/Bigroute" -verify_arch x86_64
-          lipo "$widget/Contents/MacOS/BigrouteWidget" -verify_arch arm64
-          lipo "$widget/Contents/MacOS/BigrouteWidget" -verify_arch x86_64
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$app/Contents/Info.plist")" = "Bigroute"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "$APP_BUNDLE_ID"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$widget/Contents/Info.plist")" = "$WIDGET_BUNDLE_ID"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")" = "$SPARKLE_PUBLIC_KEY"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app/Contents/Info.plist")" \
             = "https://github.com/${{ github.repository }}/releases/download/office-channel/appcast.xml"

@@ -33,8 +33,8 @@ if [[ "$SIGN_IDENTITY" != Developer\ ID\ Application:* ]]; then
   echo "SIGN_IDENTITY must be a Developer ID Application identity; ad-hoc releases are forbidden." >&2
   exit 1
 fi
-if [[ ! -s "$APP_PROFILE" || ! -s "$WIDGET_PROFILE" ]]; then
-  echo "Both Developer ID provisioning profiles are required." >&2
+if [[ ! -s "$APP_PROFILE" ]]; then
+  echo "Developer ID provisioning profile is required." >&2
   exit 1
 fi
 
@@ -80,7 +80,6 @@ validate_profile() {
 }
 
 validate_profile "$APP_PROFILE" "$APP_BUNDLE_ID" "App"
-validate_profile "$WIDGET_PROFILE" "$WIDGET_BUNDLE_ID" "Widget"
 
 identity_team="$(security find-certificate -c "$SIGN_IDENTITY" -p \
   | openssl x509 -noout -subject 2>/dev/null \
@@ -115,59 +114,38 @@ rm -f "$ZIP_PATH" "$DMG_PATH"
 ditto "$BUILD_APP" "$DIST_APP"
 
 APP_INFO="$DIST_APP/Contents/Info.plist"
-WIDGET="$DIST_APP/Contents/PlugIns/BigrouteWidget.appex"
-WIDGET_INFO="$WIDGET/Contents/Info.plist"
 SPARKLE_FRAMEWORK="$DIST_APP/Contents/Frameworks/Sparkle.framework"
-if [[ ! -d "$WIDGET" ]]; then
-  echo "The app does not contain the BigrouteWidget extension." >&2
-  exit 1
-fi
 if [[ ! -d "$SPARKLE_FRAMEWORK" ]]; then
   echo "The release app does not contain Sparkle.framework; OTA releases require Sparkle 2.9.4." >&2
   exit 1
 fi
 
-for info_plist in "$APP_INFO" "$WIDGET_INFO"; do
-  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$info_plist"
-  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$info_plist"
-done
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP_INFO"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_INFO"
 /usr/libexec/PlistBuddy \
   -c 'Set :SUFeedURL https://github.com/tufw95/bigroute/releases/download/stable-channel/appcast.xml' \
   "$APP_INFO"
 
 cp "$APP_PROFILE" "$DIST_APP/Contents/embedded.provisionprofile"
-cp "$WIDGET_PROFILE" "$WIDGET/Contents/embedded.provisionprofile"
 
 entitlements_dir="$(mktemp -d)"
 app_entitlements="$entitlements_dir/Bigroute.entitlements"
-widget_entitlements="$entitlements_dir/BigrouteWidget.entitlements"
 cp "$ROOT_DIR/Config/Bigroute/Bigroute.entitlements" "$app_entitlements"
-cp "$ROOT_DIR/Config/Bigroute/BigrouteWidget.entitlements" "$widget_entitlements"
 
 # Xcode normally injects these provisioning-backed identifiers into its
 # generated .xcent files. This pipeline signs manually, so add them explicitly.
-for entitlement_file in "$app_entitlements" "$widget_entitlements"; do
-  /usr/libexec/PlistBuddy \
-    -c 'Delete :com.apple.application-identifier' \
-    "$entitlement_file" 2>/dev/null || true
-  /usr/libexec/PlistBuddy \
-    -c 'Delete :com.apple.developer.team-identifier' \
-    "$entitlement_file" 2>/dev/null || true
-  /usr/libexec/PlistBuddy \
-    -c "Add :com.apple.application-identifier string $APPLE_TEAM_ID.$APP_BUNDLE_ID" \
-    "$entitlement_file"
-  /usr/libexec/PlistBuddy \
-    -c "Add :com.apple.developer.team-identifier string $APPLE_TEAM_ID" \
-    "$entitlement_file"
-done
 /usr/libexec/PlistBuddy \
-  -c "Set :com.apple.application-identifier $APPLE_TEAM_ID.$WIDGET_BUNDLE_ID" \
-  "$widget_entitlements"
-
-# Production widgets must not ship the local /Users/Shared compatibility exception.
+  -c 'Delete :com.apple.application-identifier' \
+  "$app_entitlements" 2>/dev/null || true
 /usr/libexec/PlistBuddy \
-  -c 'Delete :com.apple.security.temporary-exception.files.absolute-path.read-only' \
-  "$widget_entitlements" 2>/dev/null || true
+  -c 'Delete :com.apple.developer.team-identifier' \
+  "$app_entitlements" 2>/dev/null || true
+/usr/libexec/PlistBuddy \
+  -c "Add :com.apple.application-identifier string $APPLE_TEAM_ID.$APP_BUNDLE_ID" \
+  "$app_entitlements"
+/usr/libexec/PlistBuddy \
+  -c "Add :com.apple.developer.team-identifier string $APPLE_TEAM_ID" \
+  "$app_entitlements"
 
 # Xcode preserves ad-hoc signatures from Sparkle's binary target when the host
 # build disables signing. Re-sign nested code from the inside out so every
@@ -196,19 +174,12 @@ codesign --force --options runtime --timestamp \
 
 codesign --force --options runtime --timestamp \
   --sign "$SIGN_IDENTITY" \
-  --entitlements "$widget_entitlements" \
-  "$WIDGET"
-
-codesign --force --options runtime --timestamp \
-  --sign "$SIGN_IDENTITY" \
   --entitlements "$app_entitlements" \
   "$DIST_APP"
 
 codesign --verify --deep --strict --verbose=2 "$DIST_APP"
 lipo "$DIST_APP/Contents/MacOS/Bigroute" -verify_arch arm64
 lipo "$DIST_APP/Contents/MacOS/Bigroute" -verify_arch x86_64
-lipo "$WIDGET/Contents/MacOS/BigrouteWidget" -verify_arch arm64
-lipo "$WIDGET/Contents/MacOS/BigrouteWidget" -verify_arch x86_64
 
 validate_signed_entitlements() {
   local bundle="$1"
@@ -228,18 +199,11 @@ validate_signed_entitlements() {
   if [[ "$require_sandbox" == "1" ]]; then
     test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$signed_entitlements")" = "true"
   fi
-  if /usr/libexec/PlistBuddy \
-    -c 'Print :com.apple.security.temporary-exception.files.absolute-path.read-only' \
-    "$signed_entitlements" >/dev/null 2>&1; then
-    echo "Production bundle '$bundle' still contains the temporary /Users/Shared read exception." >&2
-    exit 1
-  fi
 }
 
 validate_signed_entitlements "$DIST_APP" "$APP_BUNDLE_ID" 0
-validate_signed_entitlements "$WIDGET" "$WIDGET_BUNDLE_ID" 1
 
-for signed_component in "${sparkle_nested[@]}" "$SPARKLE_FRAMEWORK" "$WIDGET" "$DIST_APP"; do
+for signed_component in "${sparkle_nested[@]}" "$SPARKLE_FRAMEWORK" "$DIST_APP"; do
   component_team="$(codesign -dv --verbose=4 "$signed_component" 2>&1 \
     | sed -n 's/^TeamIdentifier=//p' \
     | head -n 1)"

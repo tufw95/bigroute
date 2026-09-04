@@ -3,28 +3,28 @@
 [![CI](https://github.com/tufw95/bigroute/actions/workflows/ci.yml/badge.svg)](https://github.com/tufw95/bigroute/actions/workflows/ci.yml)
 [![Office Release](https://github.com/tufw95/bigroute/actions/workflows/office-release.yml/badge.svg)](https://github.com/tufw95/bigroute/actions/workflows/office-release.yml)
 
-Bigroute is a native macOS menu bar app and WidgetKit extension for monitoring account quota from user-configured router providers.
+Bigroute is a native macOS menu bar app for monitoring account quota from user-configured router providers.
 
 ## Features
 
 - Add any number of providers using a display name, HTTPS endpoint, and API key.
 - Automatically understand supported OmniRouter and 9Router quota responses.
 - Hide provider tabs when only one provider is configured.
-- Choose quota, account-name, or refresh-time sorting in either direction; the app and widget stay in sync.
+- Choose quota, account-name, or refresh-time sorting in either direction.
 - Prefer provider-defined account names over email labels when the quota endpoint exposes them.
 - Show remaining quota with red (0–20%), yellow (21–70%), and green (71–100%) indicators, plus account state and time until quota refresh.
 - Refresh providers in parallel every 1–60 minutes; the default is 2 minutes.
-- Store API keys in macOS Keychain and share only sanitized quota snapshots with the widget.
+- Store API keys in macOS Keychain.
 - Stay read-only during monitoring; 9Router account state changes happen only when a user presses one of the two visible manual account actions.
 - Import up to 100 selected ChatGPT account JSON files into an explicitly configured 9Router provider without opening its dashboard.
-- Use native SwiftUI, AppKit, WidgetKit, App Intents, semantic colors, and macOS materials.
+- Use native SwiftUI, AppKit, semantic colors, and macOS materials.
 - Deliver signed automatic updates with Sparkle 2.
 
 ## Install
 
 Bigroute requires macOS 14 or later on Apple Silicon or Intel Macs.
 
-The current office build is available from [Bigroute 1.4.0 Office](https://github.com/tufw95/bigroute/releases/tag/office-v1.4.0):
+The current office build is available from [Bigroute 1.4.13 Office](https://github.com/tufw95/bigroute/releases/tag/office-v1.4.13):
 
 Existing Router Quota 1.0.2 users should use **Check for Updates…** for the cleanest in-place migration. For a manual upgrade, quit Router Quota and move `/Applications/Router Quota.app` to the Trash before copying Bigroute; keeping both bundles can make macOS load the older widget because they intentionally share compatibility identifiers.
 

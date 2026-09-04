@@ -22,7 +22,6 @@ xcodebuild \
 # Local builds are intentionally ad-hoc. Release builds are signed and
 # notarized by the GitHub Actions release workflow.
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
-WIDGET="$APP/Contents/PlugIns/BigrouteWidget.appex"
 
 codesign --force --sign - --timestamp=none \
   "$SPARKLE/Versions/B/XPCServices/Downloader.xpc"
@@ -34,16 +33,12 @@ codesign --force --sign - --timestamp=none \
   "$SPARKLE/Versions/B/Autoupdate"
 codesign --force --sign - --timestamp=none "$SPARKLE"
 codesign --force --sign - --timestamp=none --generate-entitlement-der \
-  --entitlements "$ROOT_DIR/Config/Bigroute/BigrouteWidget.entitlements" "$WIDGET"
-codesign --force --sign - --timestamp=none --generate-entitlement-der \
   --entitlements "$ROOT_DIR/Config/Bigroute/Bigroute.entitlements" "$APP"
 codesign --verify --deep --strict "$APP"
 
 ditto "$APP" "$INSTALLED_APP"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
   -f -R -trusted "$INSTALLED_APP"
-pluginkit -r "$APP/Contents/PlugIns/BigrouteWidget.appex" 2>/dev/null || true
-pluginkit -a "$INSTALLED_APP/Contents/PlugIns/BigrouteWidget.appex" 2>/dev/null || true
 APP="$INSTALLED_APP"
 
 case "$MODE" in

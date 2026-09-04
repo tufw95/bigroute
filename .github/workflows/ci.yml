@@ -33,7 +33,7 @@ jobs:
       - name: Run Swift tests
         run: swift test
 
-      - name: Build Debug app and widget
+      - name: Build Debug app
         run: |
           xcodebuild \
             -project Bigroute.xcodeproj \

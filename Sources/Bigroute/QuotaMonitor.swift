@@ -4,19 +4,10 @@ import OSLog
 #if SWIFT_PACKAGE
 import BigrouteCore
 #endif
-#if canImport(WidgetKit)
-import WidgetKit
-#endif
 
 @MainActor
 @Observable
 final class QuotaMonitor {
-    private static let widgetKind = "CustomProviderQuotaWidget"
-    private static let automaticWidgetReloadInterval: TimeInterval = 5 * 60
-    private static let widgetLogger = Logger(
-        subsystem: "com.routerquota.app",
-        category: "WidgetSync"
-    )
     private static let routingLogger = Logger(
         subsystem: "com.routerquota.app",
         category: "ManualRouting"
@@ -42,8 +33,6 @@ final class QuotaMonitor {
     private let credentialStore = CredentialStore()
     private let snapshotStore = SharedQuotaStore()
     private var timer: Timer?
-    private var pendingWidgetReloadTimer: Timer?
-    private var lastWidgetReloadAt: Date?
     private var lastRefreshAttemptAt: Date?
 
     init() {
@@ -74,8 +63,6 @@ final class QuotaMonitor {
     func stop() {
         timer?.invalidate()
         timer = nil
-        pendingWidgetReloadTimer?.invalidate()
-        pendingWidgetReloadTimer = nil
     }
 
     func upsertProvider(_ provider: CustomQuotaProvider) {
@@ -207,7 +194,6 @@ final class QuotaMonitor {
         )
         do {
             try snapshotStore.save(snapshot)
-            reloadWidget(force: true)
         } catch {
             Self.routingLogger.error(
                 "Could not persist manual action state: \(error.localizedDescription, privacy: .public)"
@@ -295,16 +281,9 @@ final class QuotaMonitor {
             var persistenceError: String?
             do {
                 try snapshotStore.save(snapshot)
-                Self.widgetLogger.info(
-                    "Saved widget snapshot with \(self.snapshot.providers.count, privacy: .public) providers and \(self.snapshot.accounts.count, privacy: .public) accounts"
-                )
-                // Freshness and reset countdowns are widget content too, even
-                // when the numeric quota values have not changed.
-                reloadWidget(force: force)
             } catch {
                 persistenceError = error.localizedDescription
                 errorMessage = persistenceError
-                Self.widgetLogger.error("Could not save widget snapshot: \(error.localizedDescription, privacy: .public)")
             }
 
             var errors = snapshots.compactMap(\.lastError)
@@ -325,50 +304,6 @@ final class QuotaMonitor {
         timer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
-    }
-
-    private func reloadWidget(force: Bool) {
-        #if canImport(WidgetKit)
-        let now = Date()
-        if force {
-            pendingWidgetReloadTimer?.invalidate()
-            pendingWidgetReloadTimer = nil
-            performWidgetReload(at: now)
-            return
-        }
-
-        guard let lastWidgetReloadAt else {
-            performWidgetReload(at: now)
-            return
-        }
-
-        let elapsed = now.timeIntervalSince(lastWidgetReloadAt)
-        guard elapsed < Self.automaticWidgetReloadInterval else {
-            pendingWidgetReloadTimer?.invalidate()
-            pendingWidgetReloadTimer = nil
-            performWidgetReload(at: now)
-            return
-        }
-
-        guard pendingWidgetReloadTimer == nil else { return }
-        let delay = Self.automaticWidgetReloadInterval - elapsed
-        pendingWidgetReloadTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                self.pendingWidgetReloadTimer = nil
-                self.performWidgetReload(at: Date())
-            }
-        }
-        Self.widgetLogger.info("Coalesced WidgetKit reload scheduled in \(delay, privacy: .public) seconds")
-        #endif
-    }
-
-    private func performWidgetReload(at date: Date) {
-        #if canImport(WidgetKit)
-        lastWidgetReloadAt = date
-        WidgetCenter.shared.reloadAllTimelines()
-        Self.widgetLogger.info("Requested WidgetKit reload for \(Self.widgetKind, privacy: .public)")
-        #endif
     }
 
     private func validate(_ configuration: BigrouteConfiguration) throws {

@@ -8,7 +8,6 @@ let package = Package(
     ],
     products: [
         .executable(name: "Bigroute", targets: ["Bigroute"]),
-        .executable(name: "BigrouteWidget", targets: ["BigrouteWidget"]),
         .library(name: "BigrouteCore", targets: ["BigrouteCore"])
     ],
     dependencies: [
@@ -35,11 +34,6 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/Bigroute"
-        ),
-        .executableTarget(
-            name: "BigrouteWidget",
-            dependencies: ["BigrouteCore"],
-            path: "Sources/BigrouteWidget"
         ),
         .testTarget(
             name: "BigrouteCoreTests",

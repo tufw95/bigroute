@@ -135,7 +135,7 @@ public struct BigrouteSnapshot: Codable, Equatable, Sendable {
     }
 }
 
-/// A small, sanitized hand-off between the menu-bar app and WidgetKit.
+/// Local snapshot persistence for Bigroute menu-bar app.
 /// Credentials never cross this boundary.
 public struct SharedQuotaStore: Sendable {
     public let fileURL: URL
@@ -145,37 +145,11 @@ public struct SharedQuotaStore: Sendable {
         if let fileURL {
             self.fileURL = fileURL
             self.legacyFileURL = legacyFileURL
-        } else if Self.hasDevelopmentTeam, let groupURL = Self.availableGroupContainer() {
-            self.fileURL = groupURL.appendingPathComponent("quota-snapshot.json")
-            self.legacyFileURL = nil
         } else {
             self.fileURL = URL(fileURLWithPath: "/Users/Shared/Bigroute", isDirectory: true)
                 .appendingPathComponent("quota-snapshot.json")
             self.legacyFileURL = URL(fileURLWithPath: "/Users/Shared/RouterQuota", isDirectory: true)
                 .appendingPathComponent("quota-snapshot.json")
-        }
-    }
-
-    private static var hasDevelopmentTeam: Bool {
-        guard let task = SecTaskCreateFromSelf(nil),
-              let value = SecTaskCopyValueForEntitlement(
-                task,
-                "com.apple.developer.team-identifier" as CFString,
-                nil
-              ) else { return false }
-        return value as? String != nil
-    }
-
-    private static func availableGroupContainer() -> URL? {
-        guard let url = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: "group.com.routerquota.shared"
-        ) else { return nil }
-        do {
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-            guard FileManager.default.isWritableFile(atPath: url.path) else { return nil }
-            return url
-        } catch {
-            return nil
         }
     }
 

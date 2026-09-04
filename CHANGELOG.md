@@ -4,6 +4,14 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.13] - 2026-09-04
+
+### Changed
+
+- Completely removed Widget extension (BigrouteWidget) and all WidgetKit dependencies to make the app ultra-lightweight and clean.
+- Streamlined UI rendering and eliminated heavy frame animations, ensuring instant and lag-free popover rendering.
+- Simplified shared storage and background monitoring routines.
+
 ## [1.4.12] - 2026-08-27
 
 ### Fixed
@@ -238,7 +246,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.4.0...HEAD
+[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.4.13...HEAD
+[1.4.13]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.13
+[1.4.12]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.12
+[1.4.11]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.11
+[1.4.10]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.10
+[1.4.9]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.9
+[1.4.8]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.8
+[1.4.7]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.7
+[1.4.6]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.6
+[1.4.5]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.5
+[1.4.4]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.4
+[1.4.3]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.3
+[1.4.2]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.2
+[1.4.1]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.1
 [1.4.0]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.0
 [1.3.4]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.4
 [1.3.3]: https://github.com/tufw95/bigroute/releases/tag/office-v1.3.3

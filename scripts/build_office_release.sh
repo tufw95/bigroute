@@ -58,18 +58,14 @@ rm -f "$ZIP_PATH" "$DMG_PATH"
 ditto "$BUILD_APP" "$DIST_APP"
 
 APP_INFO="$DIST_APP/Contents/Info.plist"
-WIDGET="$DIST_APP/Contents/PlugIns/BigrouteWidget.appex"
-WIDGET_INFO="$WIDGET/Contents/Info.plist"
 SPARKLE="$DIST_APP/Contents/Frameworks/Sparkle.framework"
-if [[ ! -d "$WIDGET" || ! -d "$SPARKLE" ]]; then
-  echo "The office build must contain both WidgetKit and Sparkle." >&2
+if [[ ! -d "$SPARKLE" ]]; then
+  echo "The office build must contain Sparkle." >&2
   exit 1
 fi
 
-for info_plist in "$APP_INFO" "$WIDGET_INFO"; do
-  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$info_plist"
-  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$info_plist"
-done
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP_INFO"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_INFO"
 /usr/libexec/PlistBuddy \
   -c 'Set :SUFeedURL https://github.com/tufw95/bigroute/releases/download/office-channel/appcast.xml' \
   "$APP_INFO"
@@ -100,14 +96,11 @@ codesign "${codesign_args[@]}" \
   --preserve-metadata=identifier,entitlements,requirements \
   "$SPARKLE"
 codesign "${codesign_args[@]}" --generate-entitlement-der \
-  --entitlements "$ROOT_DIR/Config/Bigroute/BigrouteWidget.entitlements" \
-  "$WIDGET"
-codesign "${codesign_args[@]}" --generate-entitlement-der \
   --entitlements "$ROOT_DIR/Config/Bigroute/Bigroute.entitlements" \
   "$DIST_APP"
 
 codesign --verify --deep --strict --verbose=2 "$DIST_APP"
-for office_code in "${sparkle_nested[@]}" "$SPARKLE" "$WIDGET" "$DIST_APP"; do
+for office_code in "${sparkle_nested[@]}" "$SPARKLE" "$DIST_APP"; do
   signing_details="$(codesign -dvv "$office_code" 2>&1)"
   if [[ "$signing_details" == *"flags="*"runtime"* ]]; then
     echo "$office_code unexpectedly carries a hardened runtime signature; office Sparkle builds must remain loadable with the self-signed certificate." >&2
@@ -116,8 +109,6 @@ for office_code in "${sparkle_nested[@]}" "$SPARKLE" "$WIDGET" "$DIST_APP"; do
 done
 lipo "$DIST_APP/Contents/MacOS/Bigroute" -verify_arch arm64
 lipo "$DIST_APP/Contents/MacOS/Bigroute" -verify_arch x86_64
-lipo "$WIDGET/Contents/MacOS/BigrouteWidget" -verify_arch arm64
-lipo "$WIDGET/Contents/MacOS/BigrouteWidget" -verify_arch x86_64
 
 expected_fingerprint="$(printf '%s' "$OFFICE_SIGNING_CERT_SHA1" | tr '[:upper:]' '[:lower:]')"
 designated_requirement="$(codesign -d -r- "$DIST_APP" 2>&1 | sed -n 's/^designated => //p')"
