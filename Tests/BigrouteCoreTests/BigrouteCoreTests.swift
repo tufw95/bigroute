@@ -215,6 +215,24 @@ import Testing
     defaults.removePersistentDomain(forName: suiteName)
 }
 
+@Test func credentialMetadataLoadDoesNotRequireAPIKeys() throws {
+    let suiteName = "BigrouteMetadataTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    let providerID = UUID()
+    let persisted = Data("""
+    {"schemaVersion":5,"providers":[{"id":"\(providerID.uuidString)","name":"9Router","endpoint":"https://router.example.com","apiKind":"nineRouter","isEnabled":true}],"refreshIntervalMinutes":2,"sortOrder":"quotaDescending","antigravityBridge":{"isEnabled":true,"modelMode":"keep_official","customModelsText":""}}
+    """.utf8)
+    defaults.set(persisted, forKey: "routerQuota.configuration.v2")
+
+    let configuration = CredentialStore(defaults: defaults).loadMetadata()
+    #expect(configuration.providers.count == 1)
+    #expect(configuration.providers[0].apiKey.isEmpty)
+    #expect(configuration.providers[0].endpoint == "https://router.example.com")
+    #expect(configuration.antigravityBridge.isEnabled)
+
+    defaults.removePersistentDomain(forName: suiteName)
+}
+
 @Test func customQuotaServiceUsesQuotaRequestsWithConfiguredTimeout() async throws {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [ReadOnlyQuotaURLProtocol.self]

@@ -29,18 +29,63 @@ final class QuotaMonitor {
     var isRunningManualAction = false
     var isImportingAccounts = false
     var isSwitchingAntigravityBridge = false
+    private(set) var isLoadingConfiguration = true
     var errorMessage: String?
 
     private let credentialStore = CredentialStore()
     private let snapshotStore = SharedQuotaStore()
     private var timer: Timer?
     private var lastRefreshAttemptAt: Date?
+    private var startupTask: Task<Void, Never>?
 
     init() {
-        configuration = credentialStore.load()
+        // Keychain reads can wait on securityd. Do not perform them while the
+        // main actor is constructing the app delegate; startup continues and
+        // the persisted configuration is hydrated asynchronously in start().
+        configuration = credentialStore.loadMetadata()
         snapshot = snapshotStore.load()
             ?? snapshotStore.loadLegacySnapshot()
             ?? BigrouteSnapshot(providers: [])
+        selectedProviderID = snapshot.providers.first?.id
+    }
+
+    var enabledProviders: [CustomQuotaProvider] {
+        configuration.providers.filter(\.isEnabled)
+    }
+
+    func start() {
+        guard startupTask == nil else { return }
+        let manager = AntigravityBridgeManager.shared
+        let shouldRestoreImmediately = configuration.antigravityBridge.isEnabled
+            || manager.isCurrentlyPointedToBridge
+        let immediateRestoreTask: Task<Error?, Never>? = shouldRestoreImmediately
+            ? Task.detached(priority: .userInitiated) {
+                do {
+                    try await manager.restoreBridgeForStartup()
+                    return nil
+                } catch {
+                    return error
+                }
+            }
+            : nil
+
+        startupTask = Task { [weak self] in
+            guard let self else { return }
+            let store = credentialStore
+            let loadedConfiguration = await Task.detached(priority: .userInitiated) {
+                store.load()
+            }.value
+            let immediateRestoreError = await immediateRestoreTask?.value
+            guard !Task.isCancelled else { return }
+            applyLoadedConfiguration(loadedConfiguration)
+            isLoadingConfiguration = false
+            beginMonitoring(immediateRestoreError: immediateRestoreError)
+            startupTask = nil
+        }
+    }
+
+    private func applyLoadedConfiguration(_ loadedConfiguration: BigrouteConfiguration) {
+        configuration = loadedConfiguration
         if snapshot.sortOrder != configuration.sortOrder {
             snapshot = snapshot.withSortOrder(configuration.sortOrder)
             try? snapshotStore.save(snapshot)
@@ -52,16 +97,47 @@ final class QuotaMonitor {
         }
     }
 
-    var enabledProviders: [CustomQuotaProvider] {
-        configuration.providers.filter(\.isEnabled)
-    }
-
-    func start() {
+    private func beginMonitoring(immediateRestoreError: Error?) {
         scheduleTimer()
         refresh()
+        if configuration.antigravityBridge.isEnabled {
+            Self.routingLogger.info("Restoring Antigravity bridge on startup")
+            let nineRouter = configuration.providers.first(where: { $0.apiKind == .nineRouter })
+                ?? configuration.providers.first
+            let url = nineRouter?.endpoint ?? "https://9router.bigroll.vn"
+            let apiKey = nineRouter?.apiKey ?? ""
+            let modelMode = configuration.antigravityBridge.modelMode
+            let customModelsText = configuration.antigravityBridge.customModelsText
+            Task {
+                do {
+                    let manager = AntigravityBridgeManager.shared
+                    try await Task.detached(priority: .userInitiated) {
+                        try manager.saveBridgeConfig(
+                            nineRouterUrl: url,
+                            apiKey: apiKey,
+                            modelMode: modelMode,
+                            customModelsText: customModelsText
+                        )
+                        try await manager.restoreBridgeForStartup()
+                    }.value
+                    Self.routingLogger.info("Antigravity bridge restored on startup")
+                } catch {
+                    Self.routingLogger.error("Antigravity bridge startup restore failed: \(error.localizedDescription, privacy: .public)")
+                    errorMessage = error.localizedDescription
+                    configuration.antigravityBridge.isEnabled = false
+                    try? credentialStore.save(configuration)
+                    AntigravityBridgeManager.shared.restoreOfficialEndpoint()
+                }
+            }
+        } else if immediateRestoreError != nil || AntigravityBridgeManager.shared.isCurrentlyPointedToBridge {
+            AntigravityBridgeManager.shared.stopProxy()
+            AntigravityBridgeManager.shared.restoreOfficialEndpoint()
+        }
     }
 
     func stop() {
+        startupTask?.cancel()
+        startupTask = nil
         timer?.invalidate()
         timer = nil
     }
@@ -84,7 +160,7 @@ final class QuotaMonitor {
         saveConfiguration()
     }
 
-    func saveConfiguration() {
+    func saveConfiguration(refresh shouldRefresh: Bool = true) {
         configuration.refreshIntervalMinutes = min(60, max(1, configuration.refreshIntervalMinutes))
         do {
             try validate(configuration)
@@ -96,7 +172,9 @@ final class QuotaMonitor {
                 selectedProviderID = enabledProviders.first?.id
             }
             scheduleTimer()
-            refresh(force: true)
+            if shouldRefresh {
+                refresh(force: true)
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -117,19 +195,41 @@ final class QuotaMonitor {
 
         let url = nineRouter?.endpoint ?? "https://9router.bigroll.vn"
         let apiKey = nineRouter?.apiKey ?? ""
-
+        let previousEnabled = configuration.antigravityBridge.isEnabled
+        // Reflect the requested state immediately; revert it if startup fails.
+        // The actual proxy switch still completes before persistence.
         configuration.antigravityBridge.isEnabled = enabled
-        saveConfiguration()
 
         do {
-            try await AntigravityBridgeManager.shared.setBridgeEnabled(
-                enabled,
-                nineRouterUrl: url,
-                apiKey: apiKey,
-                modelMode: configuration.antigravityBridge.modelMode,
-                customModelsText: configuration.antigravityBridge.customModelsText
-            )
+            let modelMode = configuration.antigravityBridge.modelMode
+            let customModelsText = configuration.antigravityBridge.customModelsText
+            let manager = AntigravityBridgeManager.shared
+            try await Task.detached(priority: .userInitiated) {
+                try await manager.setBridgeEnabled(
+                    enabled,
+                    nineRouterUrl: url,
+                    apiKey: apiKey,
+                    modelMode: modelMode,
+                    customModelsText: customModelsText
+                )
+            }.value
+            let configurationToSave = configuration
+            let store = credentialStore
+            do {
+                try await Task.detached(priority: .utility) {
+                    try store.save(configurationToSave)
+                }.value
+                errorMessage = nil
+            } catch {
+                // The bridge is already switched; report persistence failure
+                // without rolling the UI back to a state that is no longer true.
+                errorMessage = "Bridge switched, but settings could not be saved: \(error.localizedDescription)"
+            }
         } catch {
+            // Do not persist a UI toggle until the endpoint and proxy have both
+            // been switched successfully; otherwise the dashboard lies about
+            // the actual Antigravity state after a startup failure.
+            configuration.antigravityBridge.isEnabled = previousEnabled
             errorMessage = error.localizedDescription
         }
     }

@@ -84,6 +84,28 @@ public struct CredentialStore: @unchecked Sendable {
         return migrated
     }
 
+    /// Loads only non-secret settings so app startup never waits on Keychain.
+    /// Call `load()` off the main actor to hydrate provider API keys.
+    public func loadMetadata() -> BigrouteConfiguration {
+        guard let persisted = loadPersisted() else { return .defaults }
+        return BigrouteConfiguration(
+            providers: persisted.providers.map { provider in
+                CustomQuotaProvider(
+                    id: provider.id,
+                    name: provider.name,
+                    endpoint: provider.endpoint,
+                    apiKey: "",
+                    apiKind: provider.apiKind,
+                    isEnabled: provider.isEnabled
+                )
+            },
+            refreshIntervalMinutes: min(60, max(1, persisted.refreshIntervalMinutes)),
+            sortOrder: persisted.sortOrder ?? .quotaDescending,
+            antigravityBridge: persisted.antigravityBridge
+                ?? AntigravityBridgeConfig(isEnabled: AntigravityBridgeManager.shared.isCurrentlyPointedToBridge)
+        )
+    }
+
     public func save(_ configuration: BigrouteConfiguration) throws {
         let previousProviderIDs = Set(loadPersisted()?.providers.map(\.id) ?? [])
         let providers = configuration.providers.map {

@@ -4,6 +4,14 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.3] - 2026-09-05
+
+### Fixed
+
+- Preserved Antigravity Remote Control while the 9Router bridge is enabled by forwarding the official experiment-discovery response that supplies the `jetski-webchannel.googleapis.com` relay.
+- Kept non-generation Cloud Code traffic transparent through the bridge so phone remote control, authentication, telemetry, and other Antigravity services continue to work while generation requests use 9Router.
+- Restored the local bridge during Bigroute relaunch without blocking the menu-bar app on a slow macOS Keychain response.
+
 ## [1.4.13] - 2026-09-04
 
 ### Changed

@@ -662,6 +662,14 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var monitor = monitor
         Form {
+            if monitor.isLoadingConfiguration {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading secure settings…")
+                        .foregroundStyle(.secondary)
+                }
+            }
             Section {
                 if monitor.configuration.providers.isEmpty {
                     Text("Add a provider to start tracking quota.")
@@ -718,7 +726,9 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Switch Antigravity to 9Router")
                             .font(.body.weight(.medium))
-                        Text(monitor.configuration.antigravityBridge.isEnabled
+                        Text(monitor.isSwitchingAntigravityBridge
+                             ? "◌ Applying bridge settings…"
+                             : monitor.configuration.antigravityBridge.isEnabled
                              ? "● Active · Connecting via 9Router Pool"
                              : "○ Inactive · Direct Google Cloud Code")
                             .font(.caption)
@@ -733,6 +743,7 @@ struct SettingsView: View {
                             Text(mode.title).tag(mode)
                         }
                     }
+                    .disabled(monitor.isSwitchingAntigravityBridge)
                     .onChange(of: monitor.configuration.antigravityBridge.modelMode) { _, _ in
                         Task {
                             await monitor.setAntigravityBridgeEnabled(true)
@@ -742,6 +753,7 @@ struct SettingsView: View {
                     if monitor.configuration.antigravityBridge.modelMode == .custom {
                         TextField("Custom model IDs (comma-separated)", text: $monitor.configuration.antigravityBridge.customModelsText)
                             .textFieldStyle(.roundedBorder)
+                            .disabled(monitor.isSwitchingAntigravityBridge)
                             .onSubmit {
                                 Task {
                                     await monitor.setAntigravityBridgeEnabled(true)
@@ -761,6 +773,7 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.borderless)
                         .font(.caption)
+                        .disabled(monitor.isSwitchingAntigravityBridge)
                     }
                 } else {
                     Text("Turn ON to automatically route Antigravity app through your 9Router pool with full context length and official model capabilities.")
@@ -804,6 +817,7 @@ struct SettingsView: View {
                     .foregroundStyle(.red)
             }
         }
+        .disabled(monitor.isLoadingConfiguration)
         .formStyle(.grouped)
         .onChange(of: monitor.configuration.sortOrder) { _, _ in
             monitor.saveConfiguration()
