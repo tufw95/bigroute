@@ -18,8 +18,7 @@ const CONFIG_PATH = path.join(os.homedir(), '.gemini', 'antigravity', 'bridge_co
 function loadConfig() {
   try {
     if (fs.existsSync(CONFIG_PATH)) {
-      const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
-      return JSON.parse(raw);
+      return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
     }
   } catch (err) {
     console.error('[Bridge] Failed to read config:', err.message);
@@ -30,6 +29,14 @@ function loadConfig() {
     modelMode: 'keep_official', // 'keep_official' | 'custom'
     customModels: []
   };
+}
+
+function mapModelTo9Router(model) {
+  if (!model) return 'ag/gemini-3.7-flash-high';
+  if (model.startsWith('ag/') || model.startsWith('cx/') || model.startsWith('venice/')) {
+    return model;
+  }
+  return `ag/${model}`;
 }
 
 // Convert Gemini format contents to OpenAI messages format
@@ -51,7 +58,6 @@ function geminiToOpenAIMessages(contents, systemInstruction) {
       const role = item.role === 'model' ? 'assistant' : (item.role === 'system' ? 'system' : 'user');
       const parts = item.parts || [];
 
-      // Check if there are tool responses or tool calls
       const textParts = [];
       const toolCalls = [];
 
@@ -157,8 +163,6 @@ const server = http.createServer(async (req, res) => {
     cleanUrl = '/';
   }
 
-  console.log(`[Bridge] ${req.method} ${cleanUrl}`);
-
   // Health check
   if (cleanUrl === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -183,7 +187,6 @@ const server = http.createServer(async (req, res) => {
     // 1. Route /v1internal:fetchAvailableModels
     if (cleanUrl.includes('/v1internal:fetchAvailableModels')) {
       try {
-        // Fetch official Google models first to keep 100% full metadata
         const targetUrl = new URL(cleanUrl, GOOGLE_UPSTREAM);
         const headers = { ...req.headers, host: targetUrl.host };
         delete headers['content-length'];
@@ -216,47 +219,47 @@ const server = http.createServer(async (req, res) => {
           } catch (_) {}
         }
 
-        if (!modelsData.models) {
-          modelsData.models = {};
+        if (!modelsData.models || Object.keys(modelsData.models).length === 0) {
+          modelsData.models = {
+            'gemini-3.8-flash-high': { displayName: 'Gemini 3.8 Flash High', contextWindow: 1048576 },
+            'gemini-3.8-flash-medium': { displayName: 'Gemini 3.8 Flash Medium', contextWindow: 1048576 },
+            'gemini-3.7-flash-high': { displayName: 'Gemini 3.7 Flash High', contextWindow: 1048576 },
+            'gemini-3.6-flash-high': { displayName: 'Gemini 3.6 Flash High', contextWindow: 1048576 },
+            'claude-sonnet-4-6': { displayName: 'Claude Sonnet 4.6', contextWindow: 200000 },
+            'claude-opus-4-6-thinking': { displayName: 'Claude Opus 4.6', contextWindow: 200000 },
+            'gpt-oss-120b-medium': { displayName: 'GPT-OSS 120B', contextWindow: 128000 },
+            'gemini-pro-agent': { displayName: 'Gemini Pro Agent', contextWindow: 1048576 }
+          };
         }
 
-        // Base 9Router models to inject
-        const extra9RouterModels = [
-          { id: 'cx/gpt-5.5', name: '9Router · GPT-5.5', contextWindow: 200000 },
-          { id: 'cx/gpt-5.6-sol', name: '9Router · GPT-5.6 Sol', contextWindow: 200000 },
-          { id: 'cx/gpt-5.6-terra', name: '9Router · GPT-5.6 Terra', contextWindow: 200000 },
-          { id: 'ag/claude-sonnet-4-6', name: '9Router · Claude Sonnet 4.6', contextWindow: 200000 },
-          { id: 'ag/claude-opus-4-6-thinking', name: '9Router · Claude Opus 4.6', contextWindow: 200000 },
-          { id: 'ag/gpt-oss-120b-medium', name: '9Router · GPT-OSS 120B', contextWindow: 128000 },
-          { id: 'ag/gemini-3.7-flash-high', name: '9Router · Gemini 3.7 Flash High', contextWindow: 1048576 },
-          { id: 'ag/gemini-3.6-flash-high', name: '9Router · Gemini 3.6 Flash High', contextWindow: 1048576 }
-        ];
-
-        // Add custom models if configured
-        if (Array.isArray(config.customModels) && config.customModels.length > 0) {
+        if (config.modelMode === 'custom' && Array.isArray(config.customModels) && config.customModels.length > 0) {
+          const customModelsMap = {};
           for (const cm of config.customModels) {
             if (cm && cm.id) {
-              extra9RouterModels.push({
-                id: cm.id,
-                name: cm.name || cm.id,
-                contextWindow: cm.contextWindow || 200000
-              });
+              customModelsMap[cm.id] = {
+                displayName: cm.name || cm.id,
+                description: `${cm.name || cm.id} (9Router)`,
+                quotaInfo: {
+                  remainingFraction: 1.0,
+                  resetTime: new Date(Date.now() + 86400000 * 7).toISOString()
+                },
+                supportedFeatures: ['CHAT', 'COMPLETION', 'AGENT', 'STREAMING'],
+                contextWindow: cm.contextWindow || 200000,
+                maxOutput: 65536
+              };
             }
           }
-        }
-
-        for (const m of extra9RouterModels) {
-          modelsData.models[m.id] = {
-            displayName: m.name,
-            description: `${m.name} routed via 9Router Pool`,
-            quotaInfo: {
-              remainingFraction: 1.0,
-              resetTime: new Date(Date.now() + 86400000 * 7).toISOString()
-            },
-            supportedFeatures: ['CHAT', 'COMPLETION', 'AGENT', 'STREAMING'],
-            contextWindow: m.contextWindow,
-            maxOutput: 65536
-          };
+          modelsData.models = customModelsMap;
+        } else {
+          // Keep official models mode: Keep clean official model list from Google with healthy quota
+          for (const [k, v] of Object.entries(modelsData.models)) {
+            if (!v.quotaInfo) {
+              v.quotaInfo = {
+                remainingFraction: 1.0,
+                resetTime: new Date(Date.now() + 86400000 * 7).toISOString()
+              };
+            }
+          }
         }
 
         const outBody = JSON.stringify(modelsData);
@@ -276,16 +279,16 @@ const server = http.createServer(async (req, res) => {
     // 2. Route /v1internal:streamGenerateContent
     if (cleanUrl.includes('/v1internal:streamGenerateContent')) {
       const model = bodyJson?.model || '';
-      const is9RouterModel = model.startsWith('cx/') || model.startsWith('ag/') || model.startsWith('venice/') || config.modelMode === 'custom' || !model.startsWith('gemini-');
+      const mappedModel = mapModelTo9Router(model);
 
-      if (is9RouterModel && config.apiKey) {
-        console.log(`[Bridge] Routing model "${model}" via 9Router API`);
+      if (config.apiKey) {
+        console.log(`[Bridge] Routing model "${model}" -> "${mappedModel}" via 9Router`);
         try {
           const messages = geminiToOpenAIMessages(bodyJson.contents, bodyJson.systemInstruction);
           const tools = geminiToOpenAITools(bodyJson.tools);
 
           const openAiPayload = {
-            model: model,
+            model: mappedModel,
             messages,
             stream: true,
             ...(tools ? { tools } : {}),
@@ -371,7 +374,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      // Default: forward directly to Google
+      // Default fallback
       forwardToGoogle(req, res, cleanUrl, rawBody);
       return;
     }

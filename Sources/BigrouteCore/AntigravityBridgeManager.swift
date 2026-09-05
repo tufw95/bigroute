@@ -10,8 +10,8 @@ public enum AntigravityModelMode: String, Codable, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .keepOfficial: "Keep Official Models + 9Router (Recommended)"
-        case .custom: "Custom Models Only"
+        case .keepOfficial: "Keep Official Models (Auto-mapped to 9Router)"
+        case .custom: "Custom Models"
         }
     }
 }
@@ -24,7 +24,7 @@ public struct AntigravityBridgeConfig: Codable, Equatable, Sendable {
     public init(
         isEnabled: Bool = false,
         modelMode: AntigravityModelMode = .keepOfficial,
-        customModelsText: String = "cx/gpt-5.5, cx/gpt-5.6-sol, ag/claude-sonnet-4-6"
+        customModelsText: String = "cx/gpt-5.6-sol, ag/gemini-3.8-flash-high, cx/gpt-5.5, ag/claude-sonnet-4-6"
     ) {
         self.isEnabled = isEnabled
         self.modelMode = modelMode
@@ -101,6 +101,14 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
             console.error('[Bridge] Failed to read config:', err.message);
           }
           return { nineRouterUrl: 'https://9router.bigroll.vn', apiKey: '', modelMode: 'keep_official', customModels: [] };
+        }
+
+        function mapModelTo9Router(model) {
+          if (!model) return 'ag/gemini-3.7-flash-high';
+          if (model.startsWith('ag/') || model.startsWith('cx/') || model.startsWith('venice/')) {
+            return model;
+          }
+          return `ag/${model}`;
         }
 
         function geminiToOpenAIMessages(contents, systemInstruction) {
@@ -242,40 +250,46 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
                 if (googleResponse.statusCode >= 200 && googleResponse.statusCode < 300) {
                   try { modelsData = JSON.parse(googleResponse.body); } catch (_) {}
                 }
-                if (!modelsData.models) modelsData.models = {};
-
-                const extra9RouterModels = [
-                  { id: 'cx/gpt-5.5', name: '9Router · GPT-5.5', contextWindow: 200000 },
-                  { id: 'cx/gpt-5.6-sol', name: '9Router · GPT-5.6 Sol', contextWindow: 200000 },
-                  { id: 'cx/gpt-5.6-terra', name: '9Router · GPT-5.6 Terra', contextWindow: 200000 },
-                  { id: 'ag/claude-sonnet-4-6', name: '9Router · Claude Sonnet 4.6', contextWindow: 200000 },
-                  { id: 'ag/claude-opus-4-6-thinking', name: '9Router · Claude Opus 4.6', contextWindow: 200000 },
-                  { id: 'ag/gpt-oss-120b-medium', name: '9Router · GPT-OSS 120B', contextWindow: 128000 },
-                  { id: 'ag/gemini-3.7-flash-high', name: '9Router · Gemini 3.7 Flash High', contextWindow: 1048576 },
-                  { id: 'ag/gemini-3.6-flash-high', name: '9Router · Gemini 3.6 Flash High', contextWindow: 1048576 }
-                ];
-
-                if (Array.isArray(config.customModels) && config.customModels.length > 0) {
-                  for (const cm of config.customModels) {
-                    if (cm && cm.id) {
-                      extra9RouterModels.push({
-                        id: cm.id,
-                        name: cm.name || cm.id,
-                        contextWindow: cm.contextWindow || 200000
-                      });
-                    }
-                  }
+                if (!modelsData.models || Object.keys(modelsData.models).length === 0) {
+                  modelsData.models = {
+                    'gemini-3.8-flash-high': { displayName: 'Gemini 3.8 Flash High', contextWindow: 1048576 },
+                    'gemini-3.8-flash-medium': { displayName: 'Gemini 3.8 Flash Medium', contextWindow: 1048576 },
+                    'gemini-3.7-flash-high': { displayName: 'Gemini 3.7 Flash High', contextWindow: 1048576 },
+                    'gemini-3.6-flash-high': { displayName: 'Gemini 3.6 Flash High', contextWindow: 1048576 },
+                    'claude-sonnet-4-6': { displayName: 'Claude Sonnet 4.6', contextWindow: 200000 },
+                    'claude-opus-4-6-thinking': { displayName: 'Claude Opus 4.6', contextWindow: 200000 },
+                    'gpt-oss-120b-medium': { displayName: 'GPT-OSS 120B', contextWindow: 128000 },
+                    'gemini-pro-agent': { displayName: 'Gemini Pro Agent', contextWindow: 1048576 }
+                  };
                 }
 
-                for (const m of extra9RouterModels) {
-                  modelsData.models[m.id] = {
-                    displayName: m.name,
-                    description: `${m.name} routed via 9Router Pool`,
-                    quotaInfo: { remainingFraction: 1.0, resetTime: new Date(Date.now() + 86400000 * 7).toISOString() },
-                    supportedFeatures: ['CHAT', 'COMPLETION', 'AGENT', 'STREAMING'],
-                    contextWindow: m.contextWindow,
-                    maxOutput: 65536
-                  };
+                if (config.modelMode === 'custom' && Array.isArray(config.customModels) && config.customModels.length > 0) {
+                  const customModelsMap = {};
+                  for (const cm of config.customModels) {
+                    if (cm && cm.id) {
+                      customModelsMap[cm.id] = {
+                        displayName: cm.name || cm.id,
+                        description: `${cm.name || cm.id} (9Router)`,
+                        quotaInfo: {
+                          remainingFraction: 1.0,
+                          resetTime: new Date(Date.now() + 86400000 * 7).toISOString()
+                        },
+                        supportedFeatures: ['CHAT', 'COMPLETION', 'AGENT', 'STREAMING'],
+                        contextWindow: cm.contextWindow || 200000,
+                        maxOutput: 65536
+                      };
+                    }
+                  }
+                  modelsData.models = customModelsMap;
+                } else {
+                  for (const [k, v] of Object.entries(modelsData.models)) {
+                    if (!v.quotaInfo) {
+                      v.quotaInfo = {
+                        remainingFraction: 1.0,
+                        resetTime: new Date(Date.now() + 86400000 * 7).toISOString()
+                      };
+                    }
+                  }
                 }
 
                 const outBody = JSON.stringify(modelsData);
@@ -290,14 +304,14 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
 
             if (cleanUrl.includes('/v1internal:streamGenerateContent')) {
               const model = bodyJson?.model || '';
-              const is9RouterModel = model.startsWith('cx/') || model.startsWith('ag/') || model.startsWith('venice/') || config.modelMode === 'custom' || !model.startsWith('gemini-');
+              const mappedModel = mapModelTo9Router(model);
 
-              if (is9RouterModel && config.apiKey) {
+              if (config.apiKey) {
                 try {
                   const messages = geminiToOpenAIMessages(bodyJson.contents, bodyJson.systemInstruction);
                   const tools = geminiToOpenAITools(bodyJson.tools);
                   const openAiPayload = {
-                    model: model,
+                    model: mappedModel,
                     messages,
                     stream: true,
                     ...(tools ? { tools } : {}),
@@ -447,7 +461,6 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
         proxyProcess?.terminate()
         proxyProcess = nil
 
-        // Also clean any stray node process running antigravity-bridge-proxy
         let killProcess = Process()
         killProcess.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
         killProcess.arguments = ["-f", "antigravity-bridge-proxy.mjs"]

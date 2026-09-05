@@ -12,6 +12,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Streamlined UI rendering and eliminated heavy frame animations, ensuring instant and lag-free popover rendering.
 - Simplified shared storage and background monitoring routines.
 
+## [1.5.1] - 2026-09-05
+
+### Fixed
+
+- **Seamless Model Mapping for Keep Official Models**: When selecting *Keep Official Models*, Antigravity displays the exact clean official Google model list, while requests (e.g. `gemini-3.8-flash-high`) are automatically mapped and routed to 9Router's corresponding model (`ag/gemini-3.8-flash-high`).
+- **Custom Models Mode**: Allows adding custom model IDs (e.g. `cx/gpt-5.6-sol`, `ag/gemini-3.8-flash-high`) directly to Antigravity's model list.
+
 ## [1.5.0] - 2026-09-05
 
 ### Added
