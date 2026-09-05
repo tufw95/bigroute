@@ -12,6 +12,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Streamlined UI rendering and eliminated heavy frame animations, ensuring instant and lag-free popover rendering.
 - Simplified shared storage and background monitoring routines.
 
+## [1.5.2] - 2026-09-05
+
+### Enhanced
+
+- **Agent Tool Calling & Reasoning Support in Bridge Proxy**: Added full streaming support for OpenAI tool calls (`delta.tool_calls`) and thinking deltas (`delta.reasoning_content`) converted to Gemini function calls and thought parts.
+- **Multimodal Message Support**: Bridge now formats image parts (`inlineData`) to OpenAI `image_url` for seamless image input in Antigravity chat.
+- **Apply & Restart**: Made restarting Antigravity from Bigroute settings auto-save current model mode and custom model IDs before relaunching.
+
 ## [1.5.1] - 2026-09-05
 
 ### Fixed

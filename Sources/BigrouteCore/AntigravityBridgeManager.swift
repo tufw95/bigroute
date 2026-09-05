@@ -121,18 +121,26 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
             for (const item of contents) {
               const role = item.role === 'model' ? 'assistant' : (item.role === 'system' ? 'system' : 'user');
               const parts = item.parts || [];
-              const textParts = [];
+              const contentItems = [];
               const toolCalls = [];
               for (const part of parts) {
                 if (part.text) {
-                  textParts.push(part.text);
+                  contentItems.push({ type: 'text', text: part.text });
+                } else if (part.inlineData?.data) {
+                  const mime = part.inlineData.mimeType || 'image/png';
+                  contentItems.push({
+                    type: 'image_url',
+                    image_url: { url: `data:${mime};base64,${part.inlineData.data}` }
+                  });
                 } else if (part.functionCall) {
                   toolCalls.push({
                     id: part.functionCall.id || `call_${Math.random().toString(36).slice(2, 9)}`,
                     type: 'function',
                     function: {
                       name: part.functionCall.name,
-                      arguments: JSON.stringify(part.functionCall.args || {})
+                      arguments: typeof part.functionCall.args === 'string'
+                        ? part.functionCall.args
+                        : JSON.stringify(part.functionCall.args || {})
                     }
                   });
                 } else if (part.functionResponse) {
@@ -146,8 +154,14 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
                   });
                 }
               }
-              if (textParts.length > 0 || toolCalls.length > 0) {
-                const msg = { role, content: textParts.join('\\n') || '' };
+              if (contentItems.length > 0 || toolCalls.length > 0) {
+                let content = '';
+                if (contentItems.length === 1 && contentItems[0].type === 'text') {
+                  content = contentItems[0].text;
+                } else if (contentItems.length > 0) {
+                  content = contentItems;
+                }
+                const msg = { role, content };
                 if (toolCalls.length > 0) msg.tool_calls = toolCalls;
                 messages.push(msg);
               }
@@ -283,11 +297,12 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
                   modelsData.models = customModelsMap;
                 } else {
                   for (const [k, v] of Object.entries(modelsData.models)) {
-                    if (!v.quotaInfo) {
-                      v.quotaInfo = {
-                        remainingFraction: 1.0,
-                        resetTime: new Date(Date.now() + 86400000 * 7).toISOString()
-                      };
+                    v.quotaInfo = {
+                      remainingFraction: 1.0,
+                      resetTime: new Date(Date.now() + 86400000 * 7).toISOString()
+                    };
+                    if (!v.supportedFeatures) {
+                      v.supportedFeatures = ['CHAT', 'COMPLETION', 'AGENT', 'STREAMING'];
                     }
                   }
                 }
@@ -334,6 +349,7 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
                       'Connection': 'keep-alive'
                     });
 
+                    const accumulatedToolCalls = {};
                     let buffer = '';
                     openAiRes.on('data', (chunk) => {
                       buffer += chunk.toString('utf8');
@@ -344,24 +360,77 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
                         if (!trimmed || !trimmed.startsWith('data:')) continue;
                         const dataStr = trimmed.slice(5).trim();
                         if (dataStr === '[DONE]') {
-                          const endCandidate = {
-                            candidates: [{ content: { role: 'model', parts: [] }, finishReason: 'STOP' }],
-                            usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50, totalTokenCount: 150 }
-                          };
-                          res.write(`data: ${JSON.stringify(endCandidate)}\\n\\n`);
+                          const toolIndices = Object.keys(accumulatedToolCalls);
+                          if (toolIndices.length > 0) {
+                            const parts = toolIndices.map(idx => {
+                              const tc = accumulatedToolCalls[idx];
+                              let args = {};
+                              try {
+                                args = JSON.parse(tc.arguments);
+                              } catch (_) {
+                                args = { raw: tc.arguments };
+                              }
+                              return {
+                                functionCall: {
+                                  id: tc.id,
+                                  name: tc.name,
+                                  args: args
+                                }
+                              };
+                            });
+                            const toolCandidate = {
+                              candidates: [{ content: { role: 'model', parts }, finishReason: 'STOP' }],
+                              usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50, totalTokenCount: 150 }
+                            };
+                            res.write(`data: ${JSON.stringify(toolCandidate)}\\n\\n`);
+                          } else {
+                            const endCandidate = {
+                              candidates: [{ content: { role: 'model', parts: [] }, finishReason: 'STOP' }],
+                              usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50, totalTokenCount: 150 }
+                            };
+                            res.write(`data: ${JSON.stringify(endCandidate)}\\n\\n`);
+                          }
                           continue;
                         }
                         try {
                           const parsed = JSON.parse(dataStr);
                           const delta = parsed.choices?.[0]?.delta;
-                          if (delta?.content) {
-                            const candidate = {
-                              candidates: [{
-                                content: { role: 'model', parts: [{ text: delta.content }] },
-                                finishReason: null
-                              }]
-                            };
-                            res.write(`data: ${JSON.stringify(candidate)}\\n\\n`);
+                          if (delta) {
+                            if (delta.content) {
+                              const candidate = {
+                                candidates: [{
+                                  content: { role: 'model', parts: [{ text: delta.content }] },
+                                  finishReason: null
+                                }]
+                              };
+                              res.write(`data: ${JSON.stringify(candidate)}\\n\\n`);
+                            }
+                            if (delta.reasoning_content || delta.thought) {
+                              const thoughtText = delta.reasoning_content || delta.thought;
+                              const candidate = {
+                                candidates: [{
+                                  content: { role: 'model', parts: [{ thought: true, text: thoughtText }] },
+                                  finishReason: null
+                                }]
+                              };
+                              res.write(`data: ${JSON.stringify(candidate)}\\n\\n`);
+                            }
+                            if (Array.isArray(delta.tool_calls)) {
+                              for (const tc of delta.tool_calls) {
+                                const idx = tc.index ?? 0;
+                                if (!accumulatedToolCalls[idx]) {
+                                  accumulatedToolCalls[idx] = {
+                                    id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
+                                    name: tc.function?.name || '',
+                                    arguments: tc.function?.arguments || ''
+                                  };
+                                } else {
+                                  if (tc.id) accumulatedToolCalls[idx].id = tc.id;
+                                  if (tc.function?.name) accumulatedToolCalls[idx].name += tc.function.name;
+                                  if (tc.function?.arguments) accumulatedToolCalls[idx].arguments += tc.function.arguments;
+                                }
+                              }
+                            }
                           }
                         } catch (_) {}
                       }

@@ -754,9 +754,9 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button("Restart Antigravity App") {
+                        Button("Apply & Restart Antigravity") {
                             Task {
-                                await AntigravityBridgeManager.shared.relaunchAntigravityApp()
+                                await monitor.setAntigravityBridgeEnabled(true)
                             }
                         }
                         .buttonStyle(.borderless)
