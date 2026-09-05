@@ -5,15 +5,18 @@ public struct BigrouteConfiguration: Equatable, Sendable {
     public var providers: [CustomQuotaProvider]
     public var refreshIntervalMinutes: Int
     public var sortOrder: AccountSortOrder
+    public var antigravityBridge: AntigravityBridgeConfig
 
     public init(
         providers: [CustomQuotaProvider] = [],
         refreshIntervalMinutes: Int = 2,
-        sortOrder: AccountSortOrder = .quotaDescending
+        sortOrder: AccountSortOrder = .quotaDescending,
+        antigravityBridge: AntigravityBridgeConfig = AntigravityBridgeConfig()
     ) {
         self.providers = providers
         self.refreshIntervalMinutes = refreshIntervalMinutes
         self.sortOrder = sortOrder
+        self.antigravityBridge = antigravityBridge
     }
 
     public static let defaults = BigrouteConfiguration()
@@ -39,6 +42,7 @@ public struct CredentialStore: @unchecked Sendable {
         let providers: [PersistedProvider]
         let refreshIntervalMinutes: Int
         let sortOrder: AccountSortOrder?
+        let antigravityBridge: AntigravityBridgeConfig?
     }
 
     private struct LegacySettings: Codable {
@@ -68,7 +72,8 @@ public struct CredentialStore: @unchecked Sendable {
                     )
                 },
                 refreshIntervalMinutes: min(60, max(1, persisted.refreshIntervalMinutes)),
-                sortOrder: persisted.sortOrder ?? .quotaDescending
+                sortOrder: persisted.sortOrder ?? .quotaDescending,
+                antigravityBridge: persisted.antigravityBridge ?? AntigravityBridgeConfig(isEnabled: AntigravityBridgeManager.shared.isCurrentlyPointedToBridge)
             )
         }
 
@@ -100,7 +105,8 @@ public struct CredentialStore: @unchecked Sendable {
             schemaVersion: 5,
             providers: providers,
             refreshIntervalMinutes: min(60, max(1, configuration.refreshIntervalMinutes)),
-            sortOrder: configuration.sortOrder
+            sortOrder: configuration.sortOrder,
+            antigravityBridge: configuration.antigravityBridge
         )
         let data = try JSONEncoder().encode(settings)
         defaults.set(data, forKey: v2ConfigKey)
@@ -129,7 +135,8 @@ public struct CredentialStore: @unchecked Sendable {
             schemaVersion: 5,
             providers: persisted.providers,
             refreshIntervalMinutes: min(60, max(1, persisted.refreshIntervalMinutes)),
-            sortOrder: persisted.sortOrder
+            sortOrder: persisted.sortOrder,
+            antigravityBridge: persisted.antigravityBridge
         )
         if let data = try? JSONEncoder().encode(normalized) {
             defaults.set(data, forKey: v2ConfigKey)

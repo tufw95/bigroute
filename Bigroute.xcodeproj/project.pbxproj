@@ -22,6 +22,7 @@
 		A10000000000000000000012 /* THIRD_PARTY_NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* THIRD_PARTY_NOTICES.md */; };
 		A10000000000000000000013 /* ManualAccountRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* ManualAccountRouting.swift */; };
 		A10000000000000000000014 /* NineRouterAccountImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* NineRouterAccountImport.swift */; };
+		A10000000000000000000015 /* AntigravityBridgeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* AntigravityBridgeManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,7 @@
 		A20000000000000000000015 /* THIRD_PARTY_NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_NOTICES.md; sourceTree = "<group>"; };
 		A20000000000000000000016 /* ManualAccountRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualAccountRouting.swift; sourceTree = "<group>"; };
 		A20000000000000000000017 /* NineRouterAccountImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NineRouterAccountImport.swift; sourceTree = "<group>"; };
+		A20000000000000000000018 /* AntigravityBridgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityBridgeManager.swift; sourceTree = "<group>"; };
 		A2000000000000000000000B /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -52,7 +54,7 @@
 /* Begin PBXGroup section */
 		A40000000000000000000001 = {isa = PBXGroup; children = (A40000000000000000000002 /* Bigroute */, A40000000000000000000004 /* Core */, A40000000000000000000005 /* Config */, A40000000000000000000007 /* Assets */, A20000000000000000000015 /* THIRD_PARTY_NOTICES.md */, A40000000000000000000006 /* Products */, ); sourceTree = "<group>"; };
 		A40000000000000000000002 /* Bigroute */ = {isa = PBXGroup; children = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000003, A20000000000000000000012, ); path = Sources/Bigroute; sourceTree = "<group>"; };
-		A40000000000000000000004 /* Core */ = {isa = PBXGroup; children = (A20000000000000000000004, A20000000000000000000016, A20000000000000000000017, A20000000000000000000005, A20000000000000000000006, A20000000000000000000007, A20000000000000000000008, ); path = Sources/BigrouteCore; sourceTree = "<group>"; };
+		A40000000000000000000004 /* Core */ = {isa = PBXGroup; children = (A20000000000000000000004, A20000000000000000000016, A20000000000000000000017, A20000000000000000000005, A20000000000000000000006, A20000000000000000000007, A20000000000000000000008, A20000000000000000000018, ); path = Sources/BigrouteCore; sourceTree = "<group>"; };
 		A40000000000000000000005 /* Config */ = {isa = PBXGroup; children = (A2000000000000000000000E, A20000000000000000000010, ); path = Config/Bigroute; sourceTree = "<group>"; };
 		A40000000000000000000006 /* Products */ = {isa = PBXGroup; children = (A2000000000000000000000D, ); name = Products; sourceTree = "<group>"; };
 		A40000000000000000000007 /* Assets */ = {isa = PBXGroup; children = (A20000000000000000000013 /* Bigroute.icns */, A20000000000000000000014 /* BigrouteMark.svg */, ); path = Assets; sourceTree = "<group>"; };
@@ -71,7 +73,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A30000000000000000000001 /* Bigroute Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000003, A1000000000000000000000E, A10000000000000000000004, A10000000000000000000013, A10000000000000000000014, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007, A10000000000000000000008, ); runOnlyForDeploymentPostprocessing = 0; };
+		A30000000000000000000001 /* Bigroute Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000003, A1000000000000000000000E, A10000000000000000000004, A10000000000000000000013, A10000000000000000000014, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007, A10000000000000000000008, A10000000000000000000015, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCRemoteSwiftPackageReference section */

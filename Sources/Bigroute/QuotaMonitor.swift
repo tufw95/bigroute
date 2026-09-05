@@ -28,6 +28,7 @@ final class QuotaMonitor {
     var isRefreshing = false
     var isRunningManualAction = false
     var isImportingAccounts = false
+    var isSwitchingAntigravityBridge = false
     var errorMessage: String?
 
     private let credentialStore = CredentialStore()
@@ -104,6 +105,33 @@ final class QuotaMonitor {
     func selectProvider(id: UUID) {
         guard enabledProviders.contains(where: { $0.id == id }) else { return }
         selectedProviderID = id
+    }
+
+    func setAntigravityBridgeEnabled(_ enabled: Bool) async {
+        guard !isSwitchingAntigravityBridge else { return }
+        isSwitchingAntigravityBridge = true
+        defer { isSwitchingAntigravityBridge = false }
+
+        let nineRouter = configuration.providers.first(where: { $0.apiKind == .nineRouter })
+            ?? configuration.providers.first
+
+        let url = nineRouter?.endpoint ?? "https://9router.bigroll.vn"
+        let apiKey = nineRouter?.apiKey ?? ""
+
+        configuration.antigravityBridge.isEnabled = enabled
+        saveConfiguration()
+
+        do {
+            try await AntigravityBridgeManager.shared.setBridgeEnabled(
+                enabled,
+                nineRouterUrl: url,
+                apiKey: apiKey,
+                modelMode: configuration.antigravityBridge.modelMode,
+                customModelsText: configuration.antigravityBridge.customModelsText
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func runManualAction(

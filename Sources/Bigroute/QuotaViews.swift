@@ -706,6 +706,69 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Antigravity 9Router Bridge") {
+                Toggle(isOn: Binding(
+                    get: { monitor.configuration.antigravityBridge.isEnabled },
+                    set: { newValue in
+                        Task {
+                            await monitor.setAntigravityBridgeEnabled(newValue)
+                        }
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Switch Antigravity to 9Router")
+                            .font(.body.weight(.medium))
+                        Text(monitor.configuration.antigravityBridge.isEnabled
+                             ? "● Active · Connecting via 9Router Pool"
+                             : "○ Inactive · Direct Google Cloud Code")
+                            .font(.caption)
+                            .foregroundStyle(monitor.configuration.antigravityBridge.isEnabled ? Color.green : Color.secondary)
+                    }
+                }
+                .disabled(monitor.isSwitchingAntigravityBridge)
+
+                if monitor.configuration.antigravityBridge.isEnabled {
+                    Picker("Models list", selection: $monitor.configuration.antigravityBridge.modelMode) {
+                        ForEach(AntigravityModelMode.allCases, id: \.self) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .onChange(of: monitor.configuration.antigravityBridge.modelMode) { _, _ in
+                        Task {
+                            await monitor.setAntigravityBridgeEnabled(true)
+                        }
+                    }
+
+                    if monitor.configuration.antigravityBridge.modelMode == .custom {
+                        TextField("Custom model IDs (comma-separated)", text: $monitor.configuration.antigravityBridge.customModelsText)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit {
+                                Task {
+                                    await monitor.setAntigravityBridgeEnabled(true)
+                                }
+                            }
+                    }
+
+                    HStack {
+                        Text("Toggling automatically restarts Antigravity app with the new pool settings.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Restart Antigravity App") {
+                            Task {
+                                await AntigravityBridgeManager.shared.relaunchAntigravityApp()
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                    }
+                } else {
+                    Text("Turn ON to automatically route Antigravity app through your 9Router pool with full context length and official model capabilities.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Refresh") {
                 Stepper(
                     "App checks every \(monitor.configuration.refreshIntervalMinutes) minutes",

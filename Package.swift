@@ -24,7 +24,11 @@ let package = Package(
                 "RouterEndpoint.swift",
                 "CustomQuotaProvider.swift",
                 "SharedQuotaStore.swift",
-                "CredentialStore.swift"
+                "CredentialStore.swift",
+                "AntigravityBridgeManager.swift"
+            ],
+            resources: [
+                .copy("Resources")
             ]
         ),
         .executableTarget(

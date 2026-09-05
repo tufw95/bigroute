@@ -12,6 +12,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Streamlined UI rendering and eliminated heavy frame animations, ensuring instant and lag-free popover rendering.
 - Simplified shared storage and background monitoring routines.
 
+## [1.5.0] - 2026-09-05
+
+### Added
+
+- **Antigravity 9Router Bridge Switch**: Integrated an On/Off toggle in Bigroute Settings to switch Antigravity macOS app between Official Google Cloud Code and the 9Router pool seamlessly.
+- **Dynamic Endpoint Support**: Automatically manages `cloud_code_endpoint.txt` and background bridge proxy (port `50999`), auto-restarting Antigravity on switch.
+- **Preserved Model Metadata & Context Length**: Keeps full 1M token context length and metadata for Google models and seamlessly injects 9Router models (`cx/gpt-5.5`, `ag/claude-sonnet-4-6`...).
+- **Configurable Model Mode**: Allows choosing between *Keep Official Models + 9Router (Recommended)* and *Custom Models*.
+
 ## [1.4.12] - 2026-08-27
 
 ### Fixed
