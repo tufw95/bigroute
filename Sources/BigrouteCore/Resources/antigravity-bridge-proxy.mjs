@@ -6,35 +6,34 @@
  * generation payload; auth and all other endpoints stay transparent.
  */
 
-import http from 'http';
-import https from 'https';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
-import { pathToFileURL } from 'url';
+import http from 'node:http';
+import https from 'node:https';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
+import { StringDecoder } from 'node:string_decoder';
+import { gunzipSync, inflateSync, brotliDecompressSync } from 'node:zlib';
 
 const PORT = Number.parseInt(process.env.AG_PROXY_PORT || '50999', 10);
-const HOST = process.env.AG_PROXY_HOST || '127.0.0.1';
+const HOST = '127.0.0.1';
 const GOOGLE_UPSTREAM = 'https://daily-cloudcode-pa.googleapis.com';
 const CONFIG_PATH = path.join(os.homedir(), '.gemini', 'antigravity', 'bridge_config.json');
-const LOG_PATH = process.env.AG_PROXY_LOG || '/tmp/antigravity_bridge.log';
-const FALLBACK_MODEL_IDS = [
-  'gemini-3.8-flash-high',
-  'gemini-3.8-flash-medium',
-  'gemini-3.7-flash-high',
-  'gemini-3.6-flash-high',
-  'claude-sonnet-4-6',
-  'claude-opus-4-6-thinking',
-  'gpt-oss-120b-medium'
-];
+const LOG_PATH = process.env.AG_PROXY_LOG || path.join(path.dirname(CONFIG_PATH), 'bridge-proxy', 'bridge.log');
+const SCRIPT_HASH = createHash('sha256').update(fs.readFileSync(fileURLToPath(import.meta.url))).digest('hex');
+const MAX_BODY_BYTES = 32 * 1024 * 1024;
 
 function log(...args) {
   const line = `[${new Date().toISOString()}] ${args.map(value => {
     if (typeof value === 'string') return value;
     try { return JSON.stringify(value); } catch (_) { return String(value); }
   }).join(' ')}\n`;
-  try { fs.appendFileSync(LOG_PATH, line); } catch (_) {}
-  console.log('[Bridge]', ...args);
+  try {
+    if (fs.existsSync(LOG_PATH) && fs.statSync(LOG_PATH).size > 1024 * 1024) fs.truncateSync(LOG_PATH);
+    fs.appendFileSync(LOG_PATH, line, { mode: 0o600 });
+  } catch (_) {}
 }
 
 function loadConfig() {
@@ -42,40 +41,47 @@ function loadConfig() {
     if (fs.existsSync(CONFIG_PATH)) {
       const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
       return {
-        nineRouterUrl: parsed.nineRouterUrl || 'https://9router.bigroll.vn',
+        nineRouterUrl: typeof parsed.nineRouterUrl === 'string' ? parsed.nineRouterUrl : '',
         apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
         modelMode: parsed.modelMode === 'custom' ? 'custom' : 'keep_official',
         customModels: Array.isArray(parsed.customModels) ? parsed.customModels : []
       };
     }
   } catch (error) {
-    log('Could not read bridge config:', error.message);
+    log('Could not read bridge config:', error.code || error.name);
   }
-  return { nineRouterUrl: 'https://9router.bigroll.vn', apiKey: '', modelMode: 'keep_official', customModels: [] };
+  return { nineRouterUrl: '', apiKey: '', modelMode: 'keep_official', customModels: [] };
 }
 
 function normalizeCloudCodeURL(requestURL) {
-  const parsed = new URL(requestURL || '/', 'http://127.0.0.1');
+  // Parse as a path, never as a new origin (including a leading //).
+  const parsed = new URL(`http://127.0.0.1${requestURL?.startsWith('/') ? requestURL : '/'}`);
   const pathname = parsed.pathname
     .replace(/^.*\/dummy_path_padding/, '')
-    .replace(/\/v1internal\/x{7}/, '')
-    .replace(/^\/v1internal\/xxxxxxx/, '');
+    .replace(/^\/v1internal\/x{7}/, '');
   return `${pathname || '/'}${parsed.search}`;
 }
 
 function mapModelTo9Router(model) {
-  if (!model) return 'ag/gemini-3.8-flash-high';
-  if (/^(ag|cx|venice)\//.test(model)) return model;
-  return `ag/${model}`;
+  if (!model) throw new Error('The generation request does not specify a model.');
+  const id = model.replace(/^models\//, '');
+  return id.includes('/') ? id : `ag/${id}`;
 }
 
-function customModelSlug(model, index) {
+function legacyModelSlug(model, index) {
   const normalized = model.id
     .replace(/^models\//, '')
     .replace(/[^a-zA-Z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .toLowerCase();
   return `custom-${normalized || index}`;
+}
+
+function customModelSlug(model, index) {
+  // Punctuation and case can distinguish two real router IDs. Keep a readable
+  // prefix, but do not collapse both routes into the same picker entry.
+  const digest = createHash('sha256').update(model.id).digest('hex').slice(0, 12);
+  return `${legacyModelSlug(model, index)}-${digest}`;
 }
 
 function customModelPlaceholder(index) {
@@ -106,6 +112,10 @@ function resolveNineRouterModel(body, config) {
         || candidate === placeholder
         || candidate === `models/${placeholder}`)) return model.id;
     }
+    const legacyMatches = config.customModels.filter((model, index) => model?.id
+      && candidates.includes(legacyModelSlug(model, index)));
+    if (legacyMatches.length === 1) return legacyMatches[0].id;
+    if (legacyMatches.length > 1) throw new Error('This saved custom model ID is ambiguous. Select the model again.');
     // The language server may issue internal planner/checkpoint requests using
     // a placeholder from the official model metadata. Keep those requests on
     // the first configured custom route instead of falling back to Google.
@@ -113,7 +123,8 @@ function resolveNineRouterModel(body, config) {
       return config.customModels[0]?.id || mapModelTo9Router(candidates[0]);
     }
   }
-  return mapModelTo9Router(candidates[0]);
+  const model = candidates[0]?.replace(/^models\//, '');
+  return mapModelTo9Router(config.modelAliases?.[model] || model);
 }
 
 function readJSON(rawBody) {
@@ -151,6 +162,7 @@ function validQuotaInfo(previous) {
 function cloneModelDetails(source, id, displayName) {
   const template = source && typeof source === 'object' ? source : {};
   return {
+    ...template,
     displayName: displayName || id,
     description: `${displayName || id} (9Router)`,
     supportsImages: template.supportsImages ?? true,
@@ -178,31 +190,11 @@ function replaceModelIds(value, ids) {
   });
 }
 
-function fallbackModelsResponse() {
-  const models = {};
-  for (const id of FALLBACK_MODEL_IDS) {
-    models[id] = {
-      displayName: id,
-      description: id,
-      supportsImages: true,
-      supportsThinking: /thinking|gemini/i.test(id),
-      maxTokens: 200000,
-      maxOutputTokens: 65536,
-      quotaInfo: validQuotaInfo()
-    };
-  }
-  return {
-    models,
-    defaultAgentModelId: FALLBACK_MODEL_IDS[0],
-    agentModelSorts: [{ displayName: 'Models', groups: [{ displayName: 'Models', modelIds: FALLBACK_MODEL_IDS }] }],
-    commandModelIds: FALLBACK_MODEL_IDS,
-    tabModelIds: FALLBACK_MODEL_IDS
-  };
-}
-
 function buildModelsResponse(officialResponse, config) {
-  const received = officialResponse && typeof officialResponse === 'object' ? officialResponse : {};
-  const official = Object.keys(modelMap(received)).length > 0 ? received : fallbackModelsResponse();
+  const official = officialResponse;
+  // A future discovery schema must reach Antigravity unchanged. Never invent
+  // a stale model catalogue when Google returns something we do not know.
+  if (!Object.keys(modelMap(official)).length) return official;
   const officialModels = modelMap(official);
   const officialIds = Object.keys(officialModels);
   const custom = config.modelMode === 'custom'
@@ -240,7 +232,7 @@ function buildModelsResponse(officialResponse, config) {
     models[placeholder] = cloneModelDetails(models[ids[0]], custom[0].id, custom[0].name || custom[0].id);
     models[placeholder].model = placeholder;
   }
-  const result = { models };
+  const result = { ...official, models };
   result.defaultAgentModelId = ids[0];
   result.commandModelIds = ids;
   result.tabModelIds = ids;
@@ -275,23 +267,29 @@ function geminiToOpenAIMessages(contents, systemInstruction) {
   const systemText = textFromParts(systemInstruction?.parts);
   if (systemText) messages.push({ role: 'system', content: systemText });
 
+  let nextToolCall = 0;
   for (const item of Array.isArray(contents) ? contents : []) {
     const role = item?.role === 'model' ? 'assistant' : item?.role === 'system' ? 'system' : 'user';
     const textParts = [];
     const multimodalParts = [];
     const toolCalls = [];
     const toolResponses = [];
+    const thoughtParts = [];
     for (const part of Array.isArray(item?.parts) ? item.parts : []) {
-      if (part?.text) textParts.push(part.text);
+      if (part?.text) (part.thought ? thoughtParts : textParts).push(part.text);
       if (part?.inlineData?.data) {
+        if (!part.inlineData.mimeType?.startsWith('image/')) throw new Error('This bridge supports inline images; this media type is not supported.');
         multimodalParts.push({ type: 'image_url', image_url: {
           url: `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`
         } });
       }
-      if (part?.fileData?.fileUri) multimodalParts.push({ type: 'text', text: `[File: ${part.fileData.fileUri}]` });
+      if (part?.fileData?.fileUri) {
+        if (!part.fileData.mimeType?.startsWith('image/') || !/^https?:\/\//.test(part.fileData.fileUri)) throw new Error('This bridge requires an image URL or inline image data for file parts.');
+        multimodalParts.push({ type: 'image_url', image_url: { url: part.fileData.fileUri } });
+      }
       if (part?.functionCall) {
         const call = part.functionCall;
-        const callID = call.id || `call_${Math.random().toString(36).slice(2, 10)}`;
+        const callID = call.id || `bridge_call_${nextToolCall++}`;
         toolCalls.push({
           id: callID,
           type: 'function',
@@ -307,9 +305,11 @@ function geminiToOpenAIMessages(contents, systemInstruction) {
       if (part?.functionResponse) {
         const response = part.functionResponse;
         const pendingIDs = pendingToolCallIDs.get(response.name) || [];
+        const matchingIndex = response.id ? pendingIDs.indexOf(response.id) : 0;
+        const matchedID = matchingIndex >= 0 ? pendingIDs.splice(matchingIndex, 1)[0] : undefined;
         toolResponses.push({
           role: 'tool',
-          tool_call_id: response.id || pendingIDs.shift() || 'call_default',
+          tool_call_id: response.id || matchedID || 'call_default',
           name: response.name || 'tool',
           content: typeof response.response === 'string' ? response.response : JSON.stringify(response.response || {})
         });
@@ -319,12 +319,15 @@ function geminiToOpenAIMessages(contents, systemInstruction) {
     const content = multimodalParts.length > 0
       ? [...(textParts.length > 0 ? [{ type: 'text', text: textParts.join('\n') }] : []), ...multimodalParts]
       : textParts.join('\n');
-    if (content || toolCalls.length > 0 || role === 'user') {
+    // OpenAI requires all tool results immediately after their assistant call.
+    // Do not insert an empty user message before a tool-only result.
+    messages.push(...toolResponses);
+    if (content.length > 0 || toolCalls.length > 0) {
       const message = { role, content };
       if (toolCalls.length > 0) message.tool_calls = toolCalls;
+      if (thoughtParts.length > 0 && role === 'assistant') message.reasoning_content = thoughtParts.join('\n');
       messages.push(message);
     }
-    messages.push(...toolResponses);
   }
   return messages;
 }
@@ -337,7 +340,7 @@ function geminiToOpenAITools(geminiTools) {
       tools.push({ type: 'function', function: {
         name: fn.name,
         description: fn.description || '',
-        parameters: normalizeJSONSchema(fn.parameters || { type: 'object', properties: {} })
+        parameters: normalizeJSONSchema(fn.parametersJsonSchema || fn.parameters || { type: 'object', properties: {} })
       } });
     }
   }
@@ -370,12 +373,26 @@ function buildOpenAIPayload(body, config = loadConfig()) {
   if (Array.isArray(generationConfig.stopSequences)) payload.stop = generationConfig.stopSequences;
   const tools = geminiToOpenAITools(request.tools);
   if (tools) payload.tools = tools;
+  const callingConfig = request.toolConfig?.functionCallingConfig;
+  if (tools && callingConfig?.mode === 'NONE') payload.tool_choice = 'none';
+  if (tools && callingConfig?.mode === 'ANY') {
+    const allowed = callingConfig.allowedFunctionNames;
+    if (Array.isArray(allowed) && allowed.length > 0) payload.tools = tools.filter(tool => allowed.includes(tool.function.name));
+    if (!payload.tools.length) throw new Error('No declared tools match the allowed function names.');
+    payload.tool_choice = payload.tools.length === 1
+      ? { type: 'function', function: { name: payload.tools[0].function.name } }
+      : 'required';
+  }
+  if (generationConfig.responseMimeType === 'application/json') payload.response_format = { type: 'json_object' };
   return payload;
 }
 
 function chatEndpoint(base) {
-  const endpoint = new URL(base || 'https://9router.bigroll.vn');
-  const pathname = endpoint.pathname.replace(/\/$/, '');
+  const endpoint = new URL(base);
+  if (!['https:', 'http:'].includes(endpoint.protocol)
+    || (endpoint.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname))
+    || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new Error('9Router requires HTTPS, or HTTP on localhost, without URL credentials or query parameters.');
+  const pathname = endpoint.pathname.replace(/\/+$/, '').replace(/\/v1\/(quota|models)$/, '/v1');
   if (/\/chat\/completions$/.test(pathname)) return endpoint;
   endpoint.pathname = pathname.endsWith('/v1') || pathname.endsWith('/api/v1')
     ? `${pathname}/chat/completions`
@@ -384,57 +401,142 @@ function chatEndpoint(base) {
 }
 
 function sendJSON(res, status, value, headers = {}) {
-  if (res.headersSent || res.writableEnded) return;
+  if (res.destroyed || res.headersSent || res.writableEnded) return;
   const body = JSON.stringify(value);
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body), ...headers });
   res.end(body);
 }
 
-function forwardToGoogle(req, res, cleanURL, rawBody) {
-  const targetURL = new URL(cleanURL, GOOGLE_UPSTREAM);
-  const headers = { ...req.headers, host: targetURL.host };
-  delete headers['content-length'];
-  delete headers.connection;
-  const client = targetURL.protocol === 'https:' ? https : http;
-  const upstream = client.request(targetURL, {
-    method: req.method,
-    headers: { ...headers, ...(rawBody.length > 0 ? { 'content-length': rawBody.length } : {}) }
-  }, upstreamResponse => {
-    res.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
-    upstreamResponse.pipe(res);
-  });
-  upstream.on('error', error => sendJSON(res, 502, { error: { message: `Google upstream error: ${error.message}` } }));
-  if (rawBody.length > 0) upstream.write(rawBody);
-  upstream.end();
+// Hop-by-hop headers describe one HTTP connection and must not cross the
+// bridge. Forwarding them can make Node reuse stale framing metadata when a
+// large Remote Control response is relayed over a new connection.
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade'
+]);
+
+function connectionHeaderTokens(headers) {
+  const entry = Object.entries(headers).find(([name]) => name.toLowerCase() === 'connection');
+  const value = entry?.[1];
+  const values = Array.isArray(value) ? value : [value];
+  return new Set(values
+    .filter(item => typeof item === 'string')
+    .flatMap(item => item.split(','))
+    .map(token => token.trim().toLowerCase())
+    .filter(Boolean));
 }
 
-function forwardJSONToGoogle(req, cleanURL, rawBody) {
+function relayRequestHeaders(input, targetHost, { stripAcceptEncoding = false } = {}) {
+  const tokens = connectionHeaderTokens(input);
+  const headers = {};
+  for (const [name, value] of Object.entries(input)) {
+    const lower = name.toLowerCase();
+    if (lower === 'host' || lower === 'content-length' || lower === 'connection'
+      || HOP_BY_HOP_HEADERS.has(lower) || tokens.has(lower)
+      || (stripAcceptEncoding && lower === 'accept-encoding')) continue;
+    headers[name] = value;
+  }
+  headers.host = targetHost;
+  return headers;
+}
+
+function relayResponseHeaders(input) {
+  const tokens = connectionHeaderTokens(input);
+  const headers = {};
+  for (const [name, value] of Object.entries(input)) {
+    const lower = name.toLowerCase();
+    if (HOP_BY_HOP_HEADERS.has(lower) || tokens.has(lower)) continue;
+    headers[name] = value;
+  }
+  return headers;
+}
+
+// Tie each upstream to its own downstream response. A completed request body
+// does not mean the client has finished reading (or canceled) its response.
+function attachUpstream(req, res, target, options, idleTimeoutMs) {
+  const client = target.protocol === 'https:' ? https : http;
+  const upstream = client.request(target, options);
+  const cancel = () => upstream.destroy();
+  req.once('aborted', cancel);
+  res.once('close', cancel);
+  upstream.once('close', () => {
+    req.off('aborted', cancel);
+    res.off('close', cancel);
+  });
+  upstream.setTimeout(idleTimeoutMs, () => upstream.destroy(new Error('Upstream response timed out.')));
+  if (req.aborted || res.destroyed) upstream.destroy();
+  return upstream;
+}
+
+function receiveResponse(upstream) {
   return new Promise((resolve, reject) => {
-    const targetURL = new URL(cleanURL, GOOGLE_UPSTREAM);
-    const headers = { ...req.headers, host: targetURL.host };
-    delete headers['content-length'];
-    delete headers.connection;
-    // Buffered discovery responses must be plain JSON; otherwise Node leaves
-    // gzip bytes for readJSON() and the language server receives an empty map.
-    delete headers['accept-encoding'];
-    const client = targetURL.protocol === 'https:' ? https : http;
-    const upstream = client.request(targetURL, {
-      method: req.method,
-      headers: { ...headers, ...(rawBody.length > 0 ? { 'content-length': rawBody.length } : {}) }
-    }, response => {
-      const chunks = [];
-      response.on('data', chunk => chunks.push(chunk));
-      response.on('end', () => resolve({ status: response.statusCode || 502, headers: response.headers, body: Buffer.concat(chunks) }));
-      response.on('error', reject);
-    });
-    upstream.on('error', reject);
-    if (rawBody.length > 0) upstream.write(rawBody);
-    upstream.end();
+    upstream.once('response', resolve);
+    upstream.once('error', reject);
   });
 }
 
-function emitEnvelope(res, response) {
-  res.write(`data: ${JSON.stringify({ response })}\n\n`);
+async function readBounded(source, maximumBytes = MAX_BODY_BYTES) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of source) {
+    size += chunk.length;
+    if (size > maximumBytes) throw new Error('Bridge payload exceeds the size limit.');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+function decodedBody(body, encoding) {
+  const options = { maxOutputLength: MAX_BODY_BYTES };
+  switch (encoding?.toLowerCase()) {
+    case 'gzip': return gunzipSync(body, options);
+    case 'deflate': return inflateSync(body, options);
+    case 'br': return brotliDecompressSync(body, options);
+    case undefined: case 'identity': return body;
+    default: throw new Error('Unsupported content encoding.');
+  }
+}
+
+async function forwardToGoogle(req, res, target, idleTimeoutMs, transform) {
+  const headers = relayRequestHeaders(req.headers, target.host, { stripAcceptEncoding: Boolean(transform) });
+  if (transform) headers['accept-encoding'] = 'identity';
+  const upstream = attachUpstream(req, res, target, { method: req.method, headers }, idleTimeoutMs);
+  const responsePromise = receiveResponse(upstream);
+  // Start receiving concurrently: servers can reject a request before all of
+  // its body has arrived. pipeline handles errors and bounded backpressure.
+  const upload = pipeline(req, upstream);
+  upload.catch(() => {});
+  try {
+    const response = await responsePromise;
+    if (transform && response.statusCode >= 200 && response.statusCode < 300) {
+      const rawBody = await readBounded(response);
+      let value;
+      try { value = readJSON(decodedBody(rawBody, response.headers['content-encoding'])); } catch (_) {}
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const transformed = transform(value);
+        if (transformed !== value) {
+          const responseHeaders = relayResponseHeaders(response.headers);
+          for (const name of ['content-length', 'content-encoding', 'content-type', 'etag', 'content-md5']) delete responseHeaders[name];
+          sendJSON(res, response.statusCode, transformed, responseHeaders);
+          return;
+        }
+      }
+      // Unknown or compressed discovery formats are relayed byte-for-byte.
+      res.writeHead(response.statusCode, relayResponseHeaders(response.headers));
+      res.end(rawBody);
+      return;
+    }
+    res.writeHead(response.statusCode || 502, relayResponseHeaders(response.headers));
+    await pipeline(response, res);
+  } finally {
+    upstream.destroy();
+  }
 }
 
 function usageMetadata(usage) {
@@ -446,176 +548,222 @@ function usageMetadata(usage) {
   };
 }
 
-function translateOpenAIStream(upstreamResponse, res) {
-  if (upstreamResponse.statusCode < 200 || upstreamResponse.statusCode >= 300) {
-    const chunks = [];
-    upstreamResponse.on('data', chunk => chunks.push(chunk));
-    upstreamResponse.on('end', () => {
-      const body = Buffer.concat(chunks).toString('utf8');
-      let parsed;
-      try { parsed = JSON.parse(body); } catch (_) { parsed = { error: { message: body || `9Router returned ${upstreamResponse.statusCode}` } }; }
-      sendJSON(res, upstreamResponse.statusCode, parsed);
-    });
-    return;
+function finishReason(reason) {
+  switch (reason) {
+    case 'length': return 'MAX_TOKENS';
+    case 'content_filter': return 'SAFETY';
+    // Function calls are parts, not a Gemini finish-reason enum value.
+    default: return 'STOP';
   }
+}
 
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive'
-  });
+function envelope(response) {
+  return `data: ${JSON.stringify({ response })}\n\n`;
+}
+
+async function* openAIEvents(source) {
+  const decoder = new StringDecoder('utf8');
   let buffer = '';
-  let finalSent = false;
-  let usage;
-  const toolCalls = {};
-  const emitFinal = finishReason => {
-    if (finalSent) return;
-    finalSent = true;
-    const parts = [];
-    for (const call of Object.values(toolCalls)) {
-      let args = {};
-      try { args = JSON.parse(call.arguments || '{}'); } catch (_) { args = { raw: call.arguments || '' }; }
-      parts.push({ functionCall: { id: call.id, name: call.name, args } });
-    }
-    emitEnvelope(res, {
-      candidates: [{ content: { role: 'model', parts }, finishReason: finishReason || 'STOP', index: 0 }],
-      ...(usage ? { usageMetadata: usageMetadata(usage) } : {})
-    });
+  const parse = event => {
+    const lines = event.split(/\r?\n/).filter(line => line.startsWith('data:'));
+    if (!lines.length) return null;
+    const data = lines.map(line => line.slice(5).replace(/^ /, '')).join('\n');
+    if (!data) return null;
+    if (data.trim() === '[DONE]') return { done: true };
+    try { return JSON.parse(data); } catch (_) { throw new Error('9Router returned malformed stream data.'); }
   };
-  const processEvent = event => {
-    const dataLines = event.split('\n').filter(line => line.trim().startsWith('data:'));
-    if (dataLines.length === 0) return;
-    const data = dataLines.map(line => line.slice(line.indexOf(':') + 1).trim()).join('\n');
-    if (!data || data === '[DONE]') { emitFinal(Object.keys(toolCalls).length > 0 ? 'TOOL_CALL' : 'STOP'); return; }
-    let parsed;
-    try { parsed = JSON.parse(data); } catch (_) { return; }
+  for await (const chunk of source) {
+    buffer += decoder.write(chunk);
+    let boundary;
+    while ((boundary = /\r?\n\r?\n/.exec(buffer))) {
+      const event = parse(buffer.slice(0, boundary.index));
+      buffer = buffer.slice(boundary.index + boundary[0].length);
+      if (event) yield event;
+      if (event?.done) return;
+    }
+    if (Buffer.byteLength(buffer) > MAX_BODY_BYTES) throw new Error('9Router stream event exceeds the size limit.');
+  }
+  buffer += decoder.end();
+  if (buffer.trim()) {
+    const event = parse(buffer);
+    if (event) yield event;
+  }
+}
+
+async function* translatedEnvelopes(source) {
+  const toolCalls = new Map();
+  let reason;
+  let usage;
+  let receivedChoice = false;
+  let finished = false;
+  let argumentBytes = 0;
+  for await (const parsed of openAIEvents(source)) {
+    if (parsed.error) throw new Error('9Router returned a generation error in the stream.');
+    if (parsed.done) { finished = true; break; }
     if (parsed.usage) usage = parsed.usage;
     const choice = parsed.choices?.[0];
-    const delta = choice?.delta;
-    if (delta?.content) emitEnvelope(res, { candidates: [{ content: { role: 'model', parts: [{ text: delta.content }] }, index: 0 }] });
-    const reasoning = delta?.reasoning_content || delta?.reasoning || delta?.thought;
-    if (reasoning) emitEnvelope(res, { candidates: [{ content: { role: 'model', parts: [{ text: reasoning, thought: true }] }, index: 0 }] });
-    for (const call of Array.isArray(delta?.tool_calls) ? delta.tool_calls : []) {
+    if (!choice) continue;
+    receivedChoice = true;
+    const delta = choice.delta || {};
+    if (delta.content) yield envelope({ candidates: [{ content: { role: 'model', parts: [{ text: delta.content }] }, index: 0 }] });
+    const reasoning = delta.reasoning_content || delta.reasoning || delta.thought;
+    if (reasoning) yield envelope({ candidates: [{ content: { role: 'model', parts: [{ text: reasoning, thought: true }] }, index: 0 }] });
+    for (const call of Array.isArray(delta.tool_calls) ? delta.tool_calls : []) {
       const index = call.index ?? 0;
-      if (!toolCalls[index]) toolCalls[index] = { id: call.id || `call_${index}`, name: '', arguments: '' };
-      if (call.id) toolCalls[index].id = call.id;
-      if (call.function?.name) toolCalls[index].name += call.function.name;
-      if (call.function?.arguments) toolCalls[index].arguments += call.function.arguments;
+      const current = toolCalls.get(index) || { id: call.id || `call_${index}`, name: '', arguments: '' };
+      if (call.id) current.id = call.id;
+      if (call.function?.name) current.name += call.function.name;
+      if (call.function?.arguments) {
+        argumentBytes += Buffer.byteLength(call.function.arguments);
+        if (argumentBytes > MAX_BODY_BYTES) throw new Error('9Router tool arguments exceed the size limit.');
+        current.arguments += call.function.arguments;
+      }
+      toolCalls.set(index, current);
     }
-    if (choice?.finish_reason) {
-      const reason = choice.finish_reason === 'length'
-        ? 'MAX_TOKENS'
-        : choice.finish_reason === 'tool_calls' ? 'TOOL_CALL' : 'STOP';
-      emitFinal(reason);
-    }
-  };
-  upstreamResponse.on('data', chunk => {
-    buffer += chunk.toString('utf8').replace(/\r\n/g, '\n');
-    const events = buffer.split(/\n\n/);
-    buffer = events.pop() || '';
-    for (const event of events) processEvent(event);
+    if (choice.finish_reason) reason = finishReason(choice.finish_reason);
+  }
+  if (!receivedChoice || (!finished && !reason)) throw new Error('9Router closed the stream before generation completed.');
+  const parts = [...toolCalls.values()].map(call => {
+    const args = JSON.parse(call.arguments || '{}');
+    if (!call.name || !args || typeof args !== 'object' || Array.isArray(args)) throw new Error('9Router returned an invalid function call.');
+    return { functionCall: { id: call.id, name: call.name, args } };
   });
-  upstreamResponse.on('end', () => {
-    if (buffer.trim()) processEvent(buffer);
-    emitFinal('STOP');
-    res.end();
-  });
-  upstreamResponse.on('error', error => {
-    log('9Router stream error:', error.message);
-    if (!res.writableEnded) res.end();
+  yield envelope({
+    candidates: [{ content: { role: 'model', parts }, finishReason: reason || 'STOP', index: 0 }],
+    ...(usage ? { usageMetadata: usageMetadata(usage) } : {})
   });
 }
 
-function routeGeneration(req, res, body, config, cleanURL, rawBody) {
+async function translateOpenAIStream(response, res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform'
+  });
+  await pipeline(response, translatedEnvelopes, res);
+}
+
+function translateOpenAIResponse(value) {
+  if (value?.error || !value?.choices?.[0]?.message) throw new Error('9Router returned an invalid generation response.');
+  const choice = value.choices[0];
+  const message = choice.message;
+  const parts = [];
+  if (message.reasoning_content) parts.push({ text: message.reasoning_content, thought: true });
+  if (message.content) parts.push({ text: message.content });
+  for (const call of message.tool_calls || []) {
+    const args = JSON.parse(call.function.arguments || '{}');
+    if (!call.function.name || !args || typeof args !== 'object' || Array.isArray(args)) throw new Error('9Router returned an invalid function call.');
+    parts.push({ functionCall: { id: call.id, name: call.function.name, args } });
+  }
+  return { response: {
+    candidates: [{ content: { role: 'model', parts }, finishReason: finishReason(choice.finish_reason), index: 0 }],
+    ...(value.usage ? { usageMetadata: usageMetadata(value.usage) } : {})
+  } };
+}
+
+async function routeGeneration(req, res, config, stream, idleTimeoutMs) {
   if (!config.apiKey) {
-    forwardToGoogle(req, res, cleanURL, rawBody);
+    sendJSON(res, 503, { error: { message: 'Configure an enabled 9Router provider with an API key in Bigroute.' } });
+    req.resume();
     return;
   }
   let endpoint;
-  try { endpoint = chatEndpoint(config.nineRouterUrl); } catch (error) {
-    sendJSON(res, 500, { error: { message: `Invalid 9Router URL: ${error.message}` } });
+  let payload;
+  try {
+    endpoint = chatEndpoint(config.nineRouterUrl);
+    const body = readJSON(decodedBody(await readBounded(req), req.headers['content-encoding']));
+    if (!body || !Array.isArray(generationRequest(body).contents)) throw new Error('Unsupported generation request format.');
+    payload = buildOpenAIPayload(body, config);
+    payload.stream = stream;
+    if (stream) payload.stream_options = { include_usage: true };
+  } catch (error) {
+    sendJSON(res, 400, { error: { message: error.message } });
     return;
   }
-  const client = endpoint.protocol === 'https:' ? https : http;
-  const payload = buildOpenAIPayload(body, config);
-  log(`Routing ${modelCandidates(body, generationRequest(body))[0] || 'default'} -> ${payload.model}`);
-  const upstream = client.request(endpoint, {
+  const upstream = attachUpstream(req, res, endpoint, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-      Authorization: `Bearer ${config.apiKey}`
-    }
-  }, response => translateOpenAIStream(response, res));
-  upstream.on('error', error => sendJSON(res, 502, { error: { message: `9Router request error: ${error.message}` } }));
+    headers: { 'Content-Type': 'application/json', Accept: stream ? 'text/event-stream' : 'application/json', Authorization: `Bearer ${config.apiKey}` }
+  }, idleTimeoutMs);
+  const responsePromise = receiveResponse(upstream);
   upstream.end(JSON.stringify(payload));
+  try {
+    const response = await responsePromise;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      res.writeHead(response.statusCode || 502, relayResponseHeaders(response.headers));
+      await pipeline(response, res);
+    } else if (stream && response.headers['content-type']?.includes('text/event-stream')) {
+      await translateOpenAIStream(response, res);
+    } else {
+      const result = translateOpenAIResponse(readJSON(decodedBody(await readBounded(response), response.headers['content-encoding'])));
+      if (stream) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform' });
+        res.end(envelope(result.response));
+      } else {
+        sendJSON(res, 200, result);
+      }
+    }
+  } finally {
+    upstream.destroy();
+  }
 }
 
-const server = http.createServer((req, res) => {
-  const cleanURL = normalizeCloudCodeURL(req.url);
-  if (cleanURL === '/health') {
-    sendJSON(res, 200, { status: 'ok', proxy: 'antigravity-9router-bridge', port: PORT });
-    return;
-  }
-  const chunks = [];
-  req.on('data', chunk => chunks.push(chunk));
-  req.on('end', async () => {
-    const rawBody = Buffer.concat(chunks);
-    const body = readJSON(rawBody);
-    const config = loadConfig();
-    log(`[${req.method}] ${cleanURL}`);
-
-    if (cleanURL.includes('fetchAvailableModels')) {
-      try {
-        const upstream = await forwardJSONToGoogle(req, cleanURL, rawBody);
-        if (upstream.status >= 200 && upstream.status < 300) {
-          const official = readJSON(upstream.body) || {};
-          sendJSON(res, 200, buildModelsResponse(official, config));
-        } else {
-          res.writeHead(upstream.status, upstream.headers);
-          res.end(upstream.body);
-        }
-      } catch (error) {
-        sendJSON(res, 502, { error: { message: `Google model discovery failed: ${error.message}` } });
+function createBridgeServer({ googleUpstream = GOOGLE_UPSTREAM, configProvider = loadConfig, idleTimeoutMs = 300_000 } = {}) {
+  let modelAliases = {};
+  const server = http.createServer(async (req, res) => {
+    try {
+      const cleanURL = normalizeCloudCodeURL(req.url);
+      const target = new URL(googleUpstream);
+      const parsed = new URL(`http://127.0.0.1${cleanURL}`);
+      target.pathname = parsed.pathname;
+      target.search = parsed.search;
+      if (parsed.pathname === '/health' && req.method === 'GET') {
+        sendJSON(res, 200, { status: 'ok', proxy: 'antigravity-9router-bridge', version: '1.6.0', scriptHash: SCRIPT_HASH, pid: process.pid });
+        return;
       }
-      return;
-    }
-
-    if (cleanURL.includes('retrieveUserQuotaSummary')) {
-      try {
-        const upstream = await forwardJSONToGoogle(req, cleanURL, rawBody);
-        if (upstream.status >= 200 && upstream.status < 300) {
-          sendJSON(res, 200, buildQuotaResponse(readJSON(upstream.body) || {}));
-        } else {
-          res.writeHead(upstream.status, upstream.headers);
-          res.end(upstream.body);
-        }
-      } catch (error) {
-        sendJSON(res, 502, { error: { message: `Google quota discovery failed: ${error.message}` } });
+      // Only exact, known Cloud Code RPCs are translated. New paths, remote
+      // sessions, experiment flags and all other services are transparent.
+      const rpc = req.method === 'POST' ? /^\/v\d+[a-z]*:(\w+)$/.exec(parsed.pathname)?.[1] : undefined;
+      if (rpc === 'streamGenerateContent' || rpc === 'generateContent') {
+        await routeGeneration(req, res, { ...configProvider(), modelAliases }, rpc === 'streamGenerateContent', idleTimeoutMs);
+      } else if (rpc === 'fetchAvailableModels') {
+        await forwardToGoogle(req, res, target, idleTimeoutMs, official => {
+          modelAliases = {};
+          for (const [id, details] of Object.entries(modelMap(official))) {
+            if (typeof details?.model === 'string') modelAliases[details.model] = id;
+          }
+          const config = configProvider();
+          return config.apiKey ? buildModelsResponse(official, config) : official;
+        });
+      } else if (rpc === 'retrieveUserQuotaSummary') {
+        await forwardToGoogle(req, res, target, idleTimeoutMs, official => configProvider().apiKey ? buildQuotaResponse(official) : official);
+      } else {
+        await forwardToGoogle(req, res, target, idleTimeoutMs);
       }
-      return;
+    } catch (error) {
+      // Never turn a truncated reply into a successful response, or leave the
+      // client waiting forever after response headers have been sent.
+      if (!res.destroyed) {
+        log('Request failed:', error.code || error.name);
+        if (res.headersSent) res.destroy();
+        else sendJSON(res, 502, { error: { message: 'Bridge upstream request failed. Please retry.' } });
+      }
     }
-
-    if (cleanURL.includes('listExperiments')) {
-      // Remote Control discovers its Google relay through this response.
-      forwardToGoogle(req, res, cleanURL, rawBody);
-      return;
-    }
-
-    if (cleanURL.includes('streamGenerateContent') || cleanURL.includes('generateContent')) {
-      routeGeneration(req, res, body, config, cleanURL, rawBody);
-      return;
-    }
-
-    forwardToGoogle(req, res, cleanURL, rawBody);
   });
-});
+  server.requestTimeout = 120_000;
+  server.headersTimeout = 60_000;
+  server.keepAliveTimeout = 5_000;
+  return server;
+}
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  server.keepAliveTimeout = 0;
-  server.headersTimeout = 0;
-  server.requestTimeout = 0;
-  server.listen(PORT, HOST, () => log(`Antigravity 9Router Bridge running at http://${HOST}:${PORT}`));
+  const server = createBridgeServer();
+  server.on('error', error => { log('Bridge server error:', error.code); process.exitCode = 1; });
+  server.listen(PORT, HOST, () => log(`Bridge 1.6.0 listening on ${HOST}:${PORT}`));
+  const shutdown = () => {
+    server.close();
+    server.closeAllConnections();
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 }
 
 export {
@@ -627,5 +775,10 @@ export {
   geminiToOpenAIMessages,
   normalizeCloudCodeURL,
   resolveNineRouterModel,
-  translateOpenAIStream
+  relayRequestHeaders,
+  relayResponseHeaders,
+  translateOpenAIStream,
+  translatedEnvelopes,
+  chatEndpoint,
+  createBridgeServer
 };

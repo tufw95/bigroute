@@ -7,11 +7,9 @@ BUILD_NUMBER="${BUILD_NUMBER:?Set BUILD_NUMBER to a positive integer.}"
 SIGN_IDENTITY="${SIGN_IDENTITY:?Set SIGN_IDENTITY to a Developer ID Application identity.}"
 APPLE_TEAM_ID="${APPLE_TEAM_ID:?Set APPLE_TEAM_ID.}"
 APP_PROFILE="${APP_PROVISIONING_PROFILE_PATH:?Set APP_PROVISIONING_PROFILE_PATH.}"
-WIDGET_PROFILE="${WIDGET_PROVISIONING_PROFILE_PATH:?Set WIDGET_PROVISIONING_PROFILE_PATH.}"
 DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
 APP_BUNDLE_ID="com.routerquota.app"
-WIDGET_BUNDLE_ID="com.routerquota.app.widget"
 APP_GROUP="group.com.routerquota.shared"
 PROJECT="$ROOT_DIR/Bigroute.xcodeproj"
 DERIVED_DATA="$ROOT_DIR/.build/BigrouteReleaseDerivedData"
@@ -123,7 +121,7 @@ fi
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP_INFO"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_INFO"
 /usr/libexec/PlistBuddy \
-  -c 'Set :SUFeedURL https://github.com/tufw95/bigroute/releases/download/stable-channel/appcast.xml' \
+  -c 'Set :SUFeedURL https://raw.githubusercontent.com/tufw95/bigroute/ota-feeds/stable/appcast.xml' \
   "$APP_INFO"
 
 cp "$APP_PROFILE" "$DIST_APP/Contents/embedded.provisionprofile"
@@ -222,6 +220,7 @@ fi
 ditto -c -k --sequesterRsrc --keepParent "$DIST_APP" "$ZIP_PATH"
 
 dmg_stage="$(mktemp -d)"
+trap 'rm -rf "$dmg_stage"' EXIT
 ditto "$DIST_APP" "$dmg_stage/Bigroute.app"
 ln -s /Applications "$dmg_stage/Applications"
 hdiutil create \

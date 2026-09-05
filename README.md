@@ -1,173 +1,77 @@
 # Bigroute
 
 [![CI](https://github.com/tufw95/bigroute/actions/workflows/ci.yml/badge.svg)](https://github.com/tufw95/bigroute/actions/workflows/ci.yml)
-[![Office Release](https://github.com/tufw95/bigroute/actions/workflows/office-release.yml/badge.svg)](https://github.com/tufw95/bigroute/actions/workflows/office-release.yml)
 
-Bigroute is a native macOS menu bar app for monitoring account quota from user-configured router providers.
+A native macOS menu bar app for monitoring 9Router and OmniRouter account quotas. Requires macOS 14 or later, on Apple Silicon or Intel.
 
-## Features
+## Install and update
 
-- Add any number of providers using a display name, HTTPS endpoint, and API key.
-- Automatically understand supported OmniRouter and 9Router quota responses.
-- Hide provider tabs when only one provider is configured.
-- Choose quota, account-name, or refresh-time sorting in either direction.
-- Prefer provider-defined account names over email labels when the quota endpoint exposes them.
-- Show remaining quota with red (0–20%), yellow (21–70%), and green (71–100%) indicators, plus account state and time until quota refresh.
-- Refresh providers in parallel every 1–60 minutes; the default is 2 minutes.
-- Store API keys in macOS Keychain.
-- Stay read-only during monitoring; 9Router account state changes happen only when a user presses one of the two visible manual account actions.
-- Import up to 100 selected ChatGPT account JSON files into an explicitly configured 9Router provider without opening its dashboard.
-- Use native SwiftUI, AppKit, semantic colors, and macOS materials.
-- Deliver signed automatic updates with Sparkle 2.
+Download the DMG from the [latest release](https://github.com/tufw95/bigroute/releases/latest), then drag Bigroute into Applications. Existing installations can use **Check for Updates…**. Office builds use a persistent internal signing certificate and signed Sparkle updates; they are not Apple notarized. macOS may require **Privacy & Security → Open Anyway** on first installation.
 
-## Install
+The 1.6.0 source upgrade is being validated. **The phone Remote Control conversation-switching issue remains unresolved; 1.6.0 has not been released for team OTA.** See [audit findings and release gate](docs/audit-1.6.0.md).
 
-Bigroute requires macOS 14 or later on Apple Silicon or Intel Macs.
+## Providers and quotas
 
-The current office build is available from [Bigroute 1.4.13 Office](https://github.com/tufw95/bigroute/releases/tag/office-v1.4.13):
+In Settings, add a name, provider type, HTTPS endpoint, and API key. HTTP is accepted only for loopback endpoints. Choose **9Router** explicitly to enable its manual account actions, JSON import, and Bridge. Auto-detect and OmniRouter support quota monitoring.
 
-Existing Router Quota 1.0.2 users should use **Check for Updates…** for the cleanest in-place migration. For a manual upgrade, quit Router Quota and move `/Applications/Router Quota.app` to the Trash before copying Bigroute; keeping both bundles can make macOS load the older widget because they intentionally share compatibility identifiers.
+- Providers refresh concurrently every 1–60 minutes (default: 2). Manual refresh requests fresh server data.
+- Quota percentages, reset times, authentication errors, account state, and expired plans come from provider responses. Missing measurements display as unavailable. Failed refreshes retain the last successful snapshot and its timestamp.
+- Sort by quota, account name, or refresh time. Hide inactive accounts using the eye button.
+- **Turn Off Empty** and **Turn On Available** are explicit user actions. Monitoring never changes account state in the background.
+- **Import JSON…** accepts up to 100 selected ChatGPT credential files, including arrays and account wrappers. Files stay in memory and are submitted to the configured 9Router endpoint. Imported tokens are never saved by Bigroute.
 
-1. Download `Bigroute-<version>.dmg`.
-2. Open the DMG and drag **Bigroute** to **Applications**.
-3. On first launch, if macOS blocks the app, open **System Settings > Privacy & Security** and choose **Open Anyway**.
-4. Open Bigroute once, then add providers from **Settings**.
+API keys are stored in macOS Keychain. Quota snapshots contain display data only and are saved in the current user's Application Support directory. A locked or denied Keychain produces a retryable error; it does not erase saved providers. Sorting and Bridge setting changes do not rewrite unchanged keys.
 
-When upgrading from Bigroute 1.2.0 or 1.2.1, the app removes the retired local routing credentials and ownership markers. It does not change any existing 9Router account state; accounts previously disabled by an older build must be reviewed manually in 9Router.
+WidgetKit was removed in 1.4.13. There is no widget extension to install or configure.
 
-Office builds are universal, signed with a persistent internal certificate, and authenticated by a Sparkle Ed25519 signature, but they are not Apple notarized. Because the office certificate has no Apple Team ID, these builds intentionally do not enable Hardened Runtime library validation; otherwise macOS rejects the embedded Sparkle framework at launch. Bigroute keeps the existing signed app identity, Keychain service, App Group, and Sparkle key so Router Quota 1.0.2 installations can upgrade in place without losing providers or widget configuration. Machines upgrading from the older ad-hoc preview may receive one final Keychain approval prompt. Widget discovery can still vary because Apple reserves fully provisioned App Groups for paid Developer teams.
+## Antigravity 9Router Bridge
 
-An optional public-trust release can also be produced with a paid Apple Developer membership:
+The optional Bridge requires Node.js 20 or later and an enabled provider explicitly configured as 9Router. With multiple 9Router providers, the first enabled one supplies the endpoint and key.
 
-1. Open the [latest GitHub release](https://github.com/tufw95/bigroute/releases/latest).
-2. Download `Bigroute-<version>.dmg`.
-3. Open the DMG and drag **Bigroute** to **Applications**.
-4. Open Bigroute once, then add providers from **Settings**.
+The local listener binds to `127.0.0.1:50999`. It translates generation between Antigravity's Cloud Code format and 9Router's chat-completions format, including streamed text, images, reasoning, and function calls. Unsupported media and malformed upstream results produce errors rather than silently losing input. Non-generation traffic is forwarded to Google's upstream; custom model discovery retains other response fields.
 
-Public-trust artifacts are Developer ID signed, notarized by Apple, and validated by Gatekeeper. This stronger channel is separate from the internal office OTA channel.
+**Compatibility is conditional.** The inspected official Antigravity 2.12.2 package hardcodes its Cloud Code endpoint. The installed modified package reads `~/.gemini/antigravity/cloud_code_endpoint.txt`. Bigroute manages that file and checks the endpoint used by the running language server; it does not modify Antigravity's signed application bundle. A future Antigravity update may remove endpoint support. Do not assume that a healthy local proxy proves that Antigravity is using it or that phone remote works.
 
-## Configure Providers
+Toggling Bridge or pressing **Apply & Restart Antigravity** requests a graceful Antigravity restart. Bigroute startup and OTA do not restart Antigravity. Turning Bridge off restores the previously saved endpoint, or removes the override so Antigravity can choose its default.
 
-Open **Bigroute > Settings**, then add a provider with:
+**Keep Official Models** retains the discovered catalogue and maps unprefixed model IDs to `ag/<model>`. **Custom Models** accepts provider-prefixed IDs. This mode depends on Antigravity's internal model schema; it is more sensitive to vendor changes. The Bridge's model availability values keep router routes selectable; they are not measured Google or 9Router account quotas. Use Bigroute's quota dashboard for actual provider measurements. Model capabilities and context limits depend on the chosen upstream model.
 
-- **Name:** any label that is useful to your team.
-- **Provider type:** choose 9Router to enable the manual account actions; Auto-detect and OmniRouter stay monitoring-only.
-- **Endpoint:** the provider's HTTPS base URL or supported quota URL.
-- **API key:** the credential allowed to read that provider's quota endpoint.
+While enabled, the Node process needs a private on-disk copy of the selected API key at `~/.gemini/antigravity/bridge_config.json` (permissions `0600`). Disabling Bridge removes this copy. Logs are bounded and omit keys, headers, and conversation bodies.
 
-Automatic Account Routing was removed in 1.2.2. Bigroute never logs into the 9Router dashboard and never runs account changes in the background. For an explicitly configured 9Router provider, **Turn Off Empty** and **Turn On Available** are immediate manual actions. They use 9Router's latest server-side quota snapshot, reject stale or missing data, and never start a second multi-minute quota scan.
+For the reported **Lost connection to the remote instance** error, the next required check is the same phone navigation with Bridge enabled and disabled, followed by a clean official Antigravity installation if needed. See the audit for observed transport errors and the limits of the existing proxy tests.
 
-The same 9Router toolbar includes **Import JSON…**. Select one or more ChatGPT credential files; Bigroute accepts snake-case and camel-case fields, arrays, and wrapped account lists. It sends one bounded request through the saved API key, skips duplicates, refreshes quota after successful imports, and never stores account tokens locally. Files without an access token are rejected before any account is added.
+## Development
 
-If only one provider exists, the provider picker is hidden. With multiple providers, use the centered picker to switch between them. API keys stay in macOS Keychain and are never copied into WidgetKit snapshots or release artifacts.
-
-Bigroute displays account identity in this order: provider-defined name, account name, display name, username, legacy label, email, then account ID. A router endpoint that returns only an email in `label` cannot be resolved to the private account name by the app; that endpoint must expose `name` or use the configured name as its `label`.
-
-## Add the Widget to the Desktop
-
-If Bigroute appears only in Notification Center, macOS desktop widgets are disabled:
-
-1. Open **System Settings > Desktop & Dock**.
-2. Scroll to **Widgets > Show Widgets**.
-3. Enable **On Desktop**.
-4. Enable **In Stage Manager** too if you use Stage Manager.
-5. Right-click the Desktop and choose **Edit Widgets**.
-6. Search for **Bigroute**, choose a size, and add it.
-
-Open the app at least once before searching for the widget. If an older widget instance shows no data or cannot be configured, remove it and add the current **Bigroute** widget again. Use **Edit Widget** to choose a provider when more than one is configured.
-
-## Refresh Timing
-
-The menu bar app refreshes each provider at the interval selected in Settings, which is 2 minutes by default. It bypasses local HTTP caches and coalesces automatic WidgetKit reload requests to one every 5 minutes so macOS does not throttle the widget. A request received during that window is queued and delivered as soon as the window ends instead of being discarded. A manual app refresh requests an immediate reload.
-
-The widget also requests a fallback timeline every 5 minutes. Its refresh button opens Bigroute, fetches the configured providers immediately, saves a new sanitized snapshot, and requests a widget redraw. macOS owns WidgetKit scheduling and may still delay or combine refreshes to protect battery life. The widget header reports the age of the last successful provider result, for example `Updated 8 min ago`; it does not represent the quota reset time.
-
-After upgrading, remove and add the widget once if macOS keeps showing an old extension timeline. macOS can keep a previous WidgetKit extension process alive after a Sparkle update even though the menu-bar app is already current.
-
-Sparkle checks for app updates hourly and also supports **Check for Updates…** from the app. Office updates are read from the dedicated signed channel:
-
-```text
-https://github.com/tufw95/bigroute/releases/download/office-channel/appcast.xml
-```
-
-## Build from Source
-
-Requirements:
-
-- macOS 14 or later.
-- A full Xcode installation at `/Applications/Xcode.app`.
-- Swift 6.
-
-Run the tests:
+Requires full Xcode, Swift 6, and Node.js 20+ for Bridge tests.
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
-```
-
-Build and launch a local Debug copy:
-
-```bash
+node --test Tests/antigravity-bridge-proxy.test.mjs
+python3 Tests/publish-channel.test.py
+./scripts/verify_monitoring_only.sh
 ./script/build_and_run.sh
 ```
 
-Unsigned or ad-hoc local builds are suitable for development, but WidgetKit discovery and the shared App Group work most reliably when both targets use the same Apple Development team.
+The development script launches from DerivedData. It does not replace the signed app in Applications. Avoid running development and installed copies together: they intentionally share compatibility identifiers. An ad-hoc build has a different signing identity and may require Keychain approval; use signed office releases for routine work.
 
-## Office OTA Release
+## Office OTA release
 
-The `Office Release` workflow requires the persistent office certificate and Sparkle Ed25519 key configured in GitHub Actions. It builds a universal internally signed app, verifies the appcast and ZIP signatures against the public key embedded in the app, publishes the numbered release, and atomically updates the fixed `office-channel` feed.
+After the release gate is satisfied, date the matching changelog entry, push the commit to `main`, and wait for CI. Push `office-v<version>` at that exact commit to run **Office Release**. The workflow builds a universal app, checks the pinned signing identity, verifies Sparkle signatures and archive metadata, and publishes the numbered release.
 
-Required repository secrets:
+Protected `office-release` environment secrets:
 
-- `OFFICE_SIGNING_CERTIFICATE_BASE64`: password-protected PKCS#12 containing the persistent `Router Quota Office Signing` compatibility identity. Do not rename or replace this certificate; installed office builds require the same signing root.
-- `OFFICE_SIGNING_CERTIFICATE_PASSWORD`: password for that PKCS#12 file.
-- `SPARKLE_EDDSA_PRIVATE_KEY_BASE64`: private key matching the `SUPublicEDKey` embedded in the app.
+- `OFFICE_SIGNING_CERTIFICATE_BASE64`: the existing password-protected office PKCS#12 certificate and key.
+- `OFFICE_SIGNING_CERTIFICATE_PASSWORD`: its export password.
+- `SPARKLE_EDDSA_PRIVATE_KEY_BASE64`: the private key matching the app's embedded Sparkle public key.
 
-Create an office release after CI passes on `main`:
+Numbered release archives are immutable. Rerunning an interrupted publication reuses their original signed bytes. The signed feed is committed to `ota-feeds/office/appcast.xml`; the Git ref update is atomic and rejects downgrades. The legacy `office-channel` release asset is also maintained for older clients. Publication verifies the downloadable bytes at both URLs.
 
-```bash
-git tag -a office-v1.4.0 -m "Bigroute 1.4.0"
-git push origin office-v1.4.0
-```
+New builds read the [office feed](https://raw.githubusercontent.com/tufw95/bigroute/ota-feeds/office/appcast.xml) and add a unique query to each check. The separate Developer ID workflow uses `ota-feeds/stable/appcast.xml`. A previously staged old update may still need to finish before an older client performs its next check; 1.6.0 cannot change code already installed on that client.
 
-Existing office installations check the dedicated channel hourly and can also use **Check for Updates…** immediately. The legacy `com.routerquota.*` bundle IDs and App Group are intentionally retained for OTA, Keychain, and WidgetKit continuity even though all user-facing product and release names are Bigroute.
+Keep the `com.routerquota.app` bundle ID, Keychain service, Sparkle key, and office signing certificate unchanged. Existing credential access depends on signing continuity. macOS can still request approval when migrating from an ad-hoc build or when Keychain permissions were changed.
 
-## Developer ID Release
+## Optional Developer ID distribution
 
-The optional `Release` workflow runs only for stable semantic-version tags such as `v1.0.0`. It requires a paid Apple Developer membership, signs and notarizes the app, and publishes to a separate fixed `stable-channel` feed. Office installations never read this feed.
+The `Release` workflow uses `v<version>` tags, a separate `release` environment, and Apple notarization. It additionally requires `MACOS_DEVELOPER_ID_CERTIFICATE_BASE64`, `MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD`, `MACOS_APP_PROVISIONING_PROFILE_BASE64`, `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_PASSWORD`. The app profile must match the retained bundle ID and App Group. A widget profile is no longer used.
 
-- `Bigroute-<version>.dmg`
-- `Bigroute-<version>.zip`
-- `appcast.xml`
-
-Before pushing a tag, add a matching section to `CHANGELOG.md` and configure the repository's protected `release` environment. The environment should require reviewer approval and contain every secret below. A missing secret stops the workflow before any release is created.
-
-### Required GitHub Actions Secrets
-
-- `MACOS_DEVELOPER_ID_CERTIFICATE_BASE64`: base64-encoded password-protected `.p12` containing a **Developer ID Application** certificate and private key.
-- `MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD`: password used when exporting the `.p12`.
-- `MACOS_APP_PROVISIONING_PROFILE_BASE64`: base64-encoded **Developer ID** provisioning profile for `com.routerquota.app` with App Group `group.com.routerquota.shared`.
-- `MACOS_WIDGET_PROVISIONING_PROFILE_BASE64`: base64-encoded **Developer ID** provisioning profile for `com.routerquota.app.widget` with App Group `group.com.routerquota.shared`.
-- `APPLE_ID`: Apple Developer account email used by `notarytool`.
-- `APPLE_TEAM_ID`: the 10-character Apple Developer team ID present in the certificate and both profiles.
-- `APPLE_APP_PASSWORD`: app-specific password for the Apple ID used by `notarytool`.
-- `SPARKLE_EDDSA_PRIVATE_KEY_BASE64`: base64 of the private Ed25519 key file whose public key is embedded as `SUPublicEDKey` in the app.
-
-Create base64 values without line wrapping on macOS:
-
-```bash
-base64 -i DeveloperIDApplication.p12 | pbcopy
-base64 -i Bigroute.provisionprofile | pbcopy
-base64 -i BigrouteWidget.provisionprofile | pbcopy
-base64 -i sparkle_private_key | pbcopy
-```
-
-The bundle IDs and App Group must be registered in the same Apple Developer team. Keep the Sparkle private key, certificate, profiles, and notarization credentials out of the repository.
-
-Create and push a Developer ID release tag only after CI passes on `main`:
-
-```bash
-git tag -s v1.0.0 -m "Bigroute 1.0.0"
-git push origin v1.0.0
-```
-
-See `SECURITY.md` for private vulnerability reporting.
+See [SECURITY.md](SECURITY.md) for credential boundaries and private vulnerability reporting.

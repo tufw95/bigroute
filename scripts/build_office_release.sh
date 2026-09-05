@@ -67,7 +67,7 @@ fi
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP_INFO"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_INFO"
 /usr/libexec/PlistBuddy \
-  -c 'Set :SUFeedURL https://github.com/tufw95/bigroute/releases/download/office-channel/appcast.xml' \
+  -c 'Set :SUFeedURL https://raw.githubusercontent.com/tufw95/bigroute/ota-feeds/office/appcast.xml' \
   "$APP_INFO"
 
 # A persistent self-signed identity keeps Keychain ACLs stable across office
@@ -121,6 +121,7 @@ ditto -c -k --sequesterRsrc --keepParent "$DIST_APP" "$ZIP_PATH"
 unzip -tq "$ZIP_PATH" >/dev/null
 
 dmg_stage="$(mktemp -d)"
+trap 'rm -rf "$dmg_stage"' EXIT
 ditto "$DIST_APP" "$dmg_stage/Bigroute.app"
 ln -s /Applications "$dmg_stage/Applications"
 hdiutil create \

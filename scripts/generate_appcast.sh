@@ -28,8 +28,10 @@ if [[ ! -s "$ZIP_PATH" || ! -s "$SPARKLE_PRIVATE_KEY_PATH" ]]; then
   exit 1
 fi
 
-tools_dir="$(mktemp -d)"
+tools_dir="$ROOT_DIR/.build/sparkle-tools-$SPARKLE_VERSION"
+mkdir -p "$tools_dir"
 archives_dir="$(mktemp -d)"
+trap 'rm -rf "$archives_dir"' EXIT
 sparkle_archive="$tools_dir/Sparkle-$SPARKLE_VERSION.tar.xz"
 
 curl --fail --silent --show-error --location "$SPARKLE_URL" --output "$sparkle_archive"

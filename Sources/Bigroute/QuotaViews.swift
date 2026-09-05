@@ -234,7 +234,7 @@ struct DashboardView: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .disabled(monitor.isRunningManualAction || monitor.isImportingAccounts)
+        .disabled(monitor.isLoadingConfiguration || monitor.configurationLoadError != nil || monitor.isRunningManualAction || monitor.isImportingAccounts)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
     }
@@ -369,9 +369,9 @@ struct DashboardView: View {
                     .foregroundStyle(.secondary)
                 Group {
                     if currentProviderSnapshot?.accounts.isEmpty == false {
-                        Text("Checking 9Router · showing cached quota")
+                        Text("Checking provider · showing cached quota")
                     } else {
-                        Text("Checking 9Router…")
+                        Text("Checking provider…")
                     }
                 }
                 .lineLimit(1)
@@ -379,7 +379,7 @@ struct DashboardView: View {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 if let updatedAt = currentProviderSnapshot?.updatedAt,
                    currentProviderSnapshot?.accounts.isEmpty == false {
-                    Text("Cached quota · Updated \(EnglishRelativeTime.string(from: updatedAt)) · 9Router unavailable")
+                    Text("Cached quota · Updated \(EnglishRelativeTime.string(from: updatedAt)) · Provider unavailable")
                         .lineLimit(1)
                         .help(error)
                 } else {
@@ -399,6 +399,7 @@ struct DashboardView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.blue)
+                .disabled(!updateController.canCheckForUpdates)
             }
             Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.plain)
         }
@@ -424,9 +425,8 @@ struct DashboardView: View {
 
     private var accounts: [CodexQuotaAccount] {
         guard let id = currentProvider?.id else { return [] }
-        let allAccounts = monitor.snapshot.accounts(for: id)
-        let filtered = hideInactiveAccounts ? allAccounts.filter(\.isRoutingActive) : allAccounts
-        return monitor.configuration.sortOrder.sorted(filtered)
+        let allAccounts = monitor.sortedAccounts(for: id)
+        return hideInactiveAccounts ? allAccounts.filter(\.isRoutingActive) : allAccounts
     }
 
     private var emptyStateTitle: String {
@@ -469,8 +469,8 @@ struct QuotaAccountCard: View {
                         .background(.quaternary, in: Capsule())
                         .foregroundStyle(.secondary)
                 }
-                if account.isFreePlan {
-                    Text("Free / Expired")
+                if account.isExpiredPlan {
+                    Text("Expired")
                         .font(.system(size: 9, weight: .bold))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
@@ -500,12 +500,12 @@ struct QuotaAccountCard: View {
             }
             .opacity(account.isRoutingActive ? 1.0 : 0.6)
 
-            if account.isFreePlan {
+            if account.isExpiredPlan {
                 HStack(spacing: 5) {
                     Image(systemName: "xmark.octagon.fill")
                         .font(.system(size: 10))
                         .foregroundStyle(.red)
-                    Text("Plan expired (Free tier) · Re-subscribe")
+                    Text("Plan unavailable · Check provider subscription")
                         .font(.system(size: 9.5))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -563,7 +563,7 @@ struct QuotaAccountCard: View {
         .overlay {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .stroke(
-                    account.isFreePlan ? Color.red.opacity(0.3) :
+                    account.isExpiredPlan ? Color.red.opacity(0.3) :
                     account.isAuthError ? Color.orange.opacity(0.3) :
                     Color.primary.opacity(0.06)
                 )
@@ -606,7 +606,7 @@ struct QuotaRowView: View {
                     .lineLimit(1)
             }
 
-            Text(quota.map { "\(Int($0.remaining.rounded()))%" } ?? "–")
+            Text(quota.map { $0.unlimited ? "∞" : "\(Int($0.remaining.rounded()))%" } ?? "–")
                 .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
                 .foregroundStyle(valueTint)
                 .frame(minWidth: 32, alignment: .trailing)
@@ -700,7 +700,7 @@ struct SettingsView: View {
             } header: {
                 Text("Providers")
             } footer: {
-                Text("API keys are stored in Keychain. Scheduled refreshes and widgets are always read-only; 9Router changes and credential imports happen only after an explicit menu-bar action.")
+                Text("API keys are stored in Keychain. Scheduled refreshes are read-only; 9Router changes and credential imports happen only after an explicit menu-bar action.")
             }
 
             Section("Display") {
@@ -729,13 +729,17 @@ struct SettingsView: View {
                         Text(monitor.isSwitchingAntigravityBridge
                              ? "◌ Applying bridge settings…"
                              : monitor.configuration.antigravityBridge.isEnabled
-                             ? "● Active · Connecting via 9Router Pool"
+                             ? (monitor.bridgeError == nil ? "Enabled · Generation via 9Router" : "Needs attention")
                              : "○ Inactive · Direct Google Cloud Code")
                             .font(.caption)
-                            .foregroundStyle(monitor.configuration.antigravityBridge.isEnabled ? Color.green : Color.secondary)
+                            .foregroundStyle(monitor.bridgeError != nil ? Color.orange : Color.secondary)
                     }
                 }
                 .disabled(monitor.isSwitchingAntigravityBridge)
+
+                Text("Requires an Antigravity build that supports a custom Cloud Code endpoint. Bigroute checks the running app for compatibility; Antigravity updates can change this support.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 if monitor.configuration.antigravityBridge.isEnabled {
                     Picker("Models list", selection: $monitor.configuration.antigravityBridge.modelMode) {
@@ -776,10 +780,14 @@ struct SettingsView: View {
                         .disabled(monitor.isSwitchingAntigravityBridge)
                     }
                 } else {
-                    Text("Turn ON to automatically route Antigravity app through your 9Router pool with full context length and official model capabilities.")
+                    Text("Turn ON to automatically route Antigravity app through your 9Router pool using an enabled 9Router provider. Model support depends on that provider.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            if let error = monitor.bridgeError {
+                Text(error).font(.caption).foregroundStyle(.orange)
             }
 
             Section("Refresh") {
@@ -801,13 +809,17 @@ struct SettingsView: View {
             Section("Updates") {
                 LabeledContent("Installed version", value: versionDescription)
                 HStack {
-                    Text("Bigroute checks GitHub Releases automatically and installs signed updates in the background.")
+                    Text("Bigroute checks for signed updates hourly. Use Check for Updates to view download or installation progress.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
                     Button("Check for Updates…") {
                         updateController.checkForUpdates()
                     }
+                    .disabled(!updateController.canCheckForUpdates)
+                }
+                if let error = updateController.lastError {
+                    Text(error).font(.caption).foregroundStyle(.red)
                 }
             }
 
@@ -817,10 +829,22 @@ struct SettingsView: View {
                     .foregroundStyle(.red)
             }
         }
-        .disabled(monitor.isLoadingConfiguration)
+        .disabled(monitor.isLoadingConfiguration || monitor.configurationLoadError != nil)
+        .overlay {
+            if let error = monitor.configurationLoadError {
+                VStack(spacing: 12) {
+                    Text("Unable to load secure settings").font(.headline)
+                    Text(error).font(.caption)
+                    Button("Retry Keychain Access") { monitor.start() }
+                        .buttonStyle(.borderedProminent)
+                }
+                .padding(24)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
         .formStyle(.grouped)
         .onChange(of: monitor.configuration.sortOrder) { _, _ in
-            monitor.saveConfiguration()
+            monitor.saveConfiguration(refresh: false)
         }
         .navigationTitle("Bigroute")
         .sheet(item: $editingProvider) { provider in
@@ -959,7 +983,8 @@ private struct ProviderEditorView: View {
                 throw EditorError("Enter an API key.")
             }
             onSave(provider)
-            if monitor.errorMessage == nil { dismiss() }
+            if let error = monitor.errorMessage { validationMessage = error }
+            else { dismiss() }
         } catch {
             validationMessage = error.localizedDescription
         }

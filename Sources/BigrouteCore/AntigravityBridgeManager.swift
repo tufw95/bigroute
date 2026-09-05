@@ -1,3 +1,5 @@
+import AppKit
+import CryptoKit
 import Foundation
 import OSLog
 
@@ -29,7 +31,7 @@ public struct AntigravityBridgeConfig: Codable, Equatable, Sendable {
     }
 }
 
-public final class AntigravityBridgeManager: @unchecked Sendable {
+public actor AntigravityBridgeManager {
     public static let shared = AntigravityBridgeManager()
 
     private static let logger = Logger(subsystem: "com.routerquota.app", category: "AntigravityBridge")
@@ -39,6 +41,9 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
     private let configJsonURL: URL
     private let proxyScriptURL: URL
     private var proxyProcess: Process?
+    private var startTask: Task<Bool, Error>?
+    private var isSwitching = false
+    private let endpointBackupURL: URL
 
     private var resourceBundle: Bundle {
         #if SWIFT_PACKAGE
@@ -52,17 +57,24 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
         let home = FileManager.default.homeDirectoryForCurrentUser
         geminiDir = home.appending(path: ".gemini/antigravity", directoryHint: .isDirectory)
         endpointFileURL = geminiDir.appending(path: "cloud_code_endpoint.txt")
+        endpointBackupURL = geminiDir.appending(path: "bridge-proxy/previous-endpoint.json")
         configJsonURL = geminiDir.appending(path: "bridge_config.json")
         proxyScriptURL = geminiDir.appending(path: "bridge-proxy/antigravity-bridge-proxy.mjs", directoryHint: .notDirectory)
     }
 
-    public var isCurrentlyPointedToBridge: Bool {
+    public nonisolated var isCurrentlyPointedToBridge: Bool {
         guard let content = try? String(contentsOf: endpointFileURL, encoding: .utf8) else { return false }
-        return content.trimmingCharacters(in: .whitespacesAndNewlines).contains("127.0.0.1:50999")
-            || content.trimmingCharacters(in: .whitespacesAndNewlines).contains("localhost:50999")
+        return Self.isBridgeEndpoint(content)
     }
 
-    public func checkHealth(timeout: TimeInterval = 1.5) async -> Bool {
+    public nonisolated static func isBridgeEndpoint(_ content: String) -> Bool {
+        guard let url = URL(string: content.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+        return url.scheme == "http" && RouterEndpoint.isLoopbackHost(url.host ?? "") && url.port == 50999
+            && url.user == nil && url.password == nil
+            && (url.path.isEmpty || url.path == "/") && url.query == nil && url.fragment == nil
+    }
+
+    public func checkHealth(timeout: TimeInterval = 1.5, scriptHash: String? = nil) async -> Bool {
         guard let url = URL(string: "http://127.0.0.1:50999/health") else { return false }
         var request = URLRequest(url: url)
         request.timeoutInterval = timeout
@@ -72,6 +84,7 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
             guard let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
             return payload["status"] as? String == "ok"
                 && payload["proxy"] as? String == "antigravity-9router-bridge"
+                && (scriptHash == nil || payload["scriptHash"] as? String == scriptHash)
         } catch {
             return false
         }
@@ -108,14 +121,22 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
         customModelsText: String
     ) throws {
         try FileManager.default.createDirectory(at: geminiDir, withIntermediateDirectories: true)
+        let safeURL = try RouterEndpoint.normalizedURL(from: nineRouterUrl)
+        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw BridgeError("Choose an enabled 9Router provider with an API key before enabling the bridge.")
+        }
         let parsedCustomModels = customModelsText
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .map { ["id": $0, "name": $0, "contextWindow": 200_000] as [String: Any] }
+        if modelMode == .custom && (parsedCustomModels.isEmpty || parsedCustomModels.count > 200) {
+            throw BridgeError("Enter between 1 and 200 custom model IDs.")
+        }
+        let ids = parsedCustomModels.compactMap { $0["id"] as? String }
+        guard Set(ids).count == ids.count else { throw BridgeError("Custom model IDs must be unique.") }
         let config: [String: Any] = [
-            "nineRouterUrl": nineRouterUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? "https://9router.bigroll.vn" : nineRouterUrl.trimmingCharacters(in: .whitespacesAndNewlines),
+            "nineRouterUrl": safeURL.absoluteString,
             "apiKey": apiKey,
             "modelMode": modelMode.rawValue,
             "customModels": parsedCustomModels
@@ -127,25 +148,51 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
 
     private func nodePath() -> String? {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let candidates = [
+        var candidates = [
             "\(home)/.local/bin/node",
+            "\(home)/.volta/bin/node",
+            "\(home)/.local/share/mise/shims/node",
             "/opt/homebrew/bin/node",
             "/usr/local/bin/node",
             "/usr/bin/node"
         ]
+        candidates += (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":")
+            .map { "\($0)/node" }
+        let nvm = URL(fileURLWithPath: "\(home)/.nvm/versions/node")
+        let versions = (try? FileManager.default.contentsOfDirectory(at: nvm, includingPropertiesForKeys: nil)) ?? []
+        candidates += versions.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending }
+            .map { $0.appending(path: "bin/node").path }
         return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
     }
 
     @discardableResult
     public func startProxy() async throws -> Bool {
+        if let startTask { return try await startTask.value }
+        let task = Task {
+            do { return try await self.launchProxy() }
+            catch {
+                try? self.restoreOfficialEndpoint()
+                throw error
+            }
+        }
+        startTask = task
+        defer { startTask = nil }
+        return try await task.value
+    }
+
+    private func launchProxy() async throws -> Bool {
         let scriptUpdated = try ensureBridgeScriptInstalled()
+        let scriptHash = SHA256.hash(data: try Data(contentsOf: proxyScriptURL)).map { String(format: "%02x", $0) }.joined()
         Self.logger.info("Starting Antigravity bridge proxy; scriptUpdated=\(scriptUpdated, privacy: .public)")
-        if !scriptUpdated, await checkHealth(timeout: 0.25) {
-            try FileManager.default.createDirectory(at: geminiDir, withIntermediateDirectories: true)
-            try "http://127.0.0.1:50999".write(to: endpointFileURL, atomically: true, encoding: .utf8)
+        if await checkHealth(timeout: 0.25, scriptHash: scriptHash) {
+            try pointToBridge()
             return false
         }
         stopProxy()
+        for _ in 0..<20 {
+            if !(await checkHealth(timeout: 0.1)) { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
         guard let node = nodePath() else {
             throw NSError(domain: "AntigravityBridge", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "Node.js binary not found. Install Node.js and try again."
@@ -165,78 +212,110 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
         // while still allowing Node a moment to initialize.
         for _ in 0..<20 {
             try await Task.sleep(for: .milliseconds(200))
-            if await checkHealth(timeout: 0.5) {
-                try FileManager.default.createDirectory(at: geminiDir, withIntermediateDirectories: true)
-                try "http://127.0.0.1:50999".write(to: endpointFileURL, atomically: true, encoding: .utf8)
+            if !process.isRunning { break }
+            if await checkHealth(timeout: 0.5, scriptHash: scriptHash) {
+                try pointToBridge()
                 Self.logger.info("Antigravity bridge proxy started")
                 return true
             }
         }
         stopProxy()
-        try? "https://daily-cloudcode-pa.googleapis.com".write(
-            to: endpointFileURL,
-            atomically: true,
-            encoding: .utf8
-        )
+        try? restoreOfficialEndpoint()
         throw NSError(domain: "AntigravityBridge", code: 3, userInfo: [
             NSLocalizedDescriptionKey: "Antigravity bridge proxy did not become healthy on port 50999."
         ])
     }
 
     public func restoreBridgeForStartup() async throws {
-        let didStartProxy = try await startProxy()
-        if didStartProxy, isProcessRunning(named: "Antigravity") {
-            await relaunchAntigravityApp()
+        // A Bigroute OTA/relaunch must never terminate the remote user's IDE.
+        _ = try await startProxy()
+    }
+
+    public func validateAntigravityConnection() throws {
+        let lookup = Process()
+        lookup.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        lookup.arguments = ["-f", "^/Applications/Antigravity\\.app/Contents/Resources/bin/language_server( |$)"]
+        let ids = Pipe()
+        lookup.standardOutput = ids
+        lookup.standardError = FileHandle.nullDevice
+        try lookup.run()
+        let data = ids.fileHandleForReading.readDataToEndOfFile()
+        lookup.waitUntilExit()
+        let pids = String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline).compactMap { Int32($0) }
+        guard !pids.isEmpty else { return }
+        let inspect = Process()
+        inspect.executableURL = URL(fileURLWithPath: "/bin/ps")
+        inspect.arguments = ["-p", pids.map(String.init).joined(separator: ","), "-o", "args="]
+        let output = Pipe()
+        inspect.standardOutput = output
+        inspect.standardError = FileHandle.nullDevice
+        try inspect.run()
+        let arguments = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        inspect.waitUntilExit()
+        let endpoints = arguments.split(whereSeparator: \.isNewline).compactMap { line -> String? in
+            let words = line.split(whereSeparator: \.isWhitespace).map(String.init)
+            if let flag = words.firstIndex(of: "--cloud_code_endpoint"), words.indices.contains(flag + 1) {
+                return words[flag + 1]
+            }
+            return words.first(where: { $0.hasPrefix("--cloud_code_endpoint=") })
+                .map { String($0.dropFirst("--cloud_code_endpoint=".count)) }
+        }
+        guard endpoints.count == pids.count, endpoints.allSatisfy(Self.isBridgeEndpoint) else {
+            throw BridgeError("Antigravity is using its official endpoint. This build must support cloud_code_endpoint.txt to use the bridge; an Antigravity update may have removed that support.")
         }
     }
 
     public func stopProxy() {
-        proxyProcess?.terminate()
+        if proxyProcess?.isRunning == true { proxyProcess?.terminate() }
         proxyProcess = nil
-        let kill = Process()
-        kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-        kill.arguments = ["-f", proxyScriptURL.path]
-        try? kill.run()
-        kill.waitUntilExit()
+        let stop = Process()
+        stop.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        // Match only this installed script, including after a Bigroute relaunch.
+        stop.arguments = ["-f", NSRegularExpression.escapedPattern(for: proxyScriptURL.path) + "$" ]
+        stop.standardOutput = FileHandle.nullDevice
+        stop.standardError = FileHandle.nullDevice
+        do { try stop.run(); stop.waitUntilExit() } catch { Self.logger.error("Could not stop bridge process") }
     }
 
-    public func restoreOfficialEndpoint() {
-        try? "https://daily-cloudcode-pa.googleapis.com".write(
-            to: endpointFileURL,
-            atomically: true,
-            encoding: .utf8
-        )
-    }
+    private struct PreviousEndpoint: Codable { let content: String? }
 
-    public func relaunchAntigravityApp() async {
-        let kill = Process()
-        kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-        kill.arguments = ["-x", "Antigravity"]
-        try? kill.run()
-        kill.waitUntilExit()
-        for _ in 0..<20 {
-            if !isProcessRunning(named: "Antigravity") { break }
-            try? await Task.sleep(for: .milliseconds(50))
+    private func pointToBridge() throws {
+        try FileManager.default.createDirectory(at: geminiDir, withIntermediateDirectories: true)
+        if !isCurrentlyPointedToBridge {
+            let content = try? String(contentsOf: endpointFileURL, encoding: .utf8)
+            let data = try JSONEncoder().encode(PreviousEndpoint(content: content))
+            try data.write(to: endpointBackupURL, options: .atomic)
         }
-        let open = Process()
-        open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        open.arguments = ["-a", "/Applications/Antigravity.app"]
-        try? open.run()
+        try "http://127.0.0.1:50999".write(to: endpointFileURL, atomically: true, encoding: .utf8)
     }
 
-    private func isProcessRunning(named name: String) -> Bool {
-        let check = Process()
-        check.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        check.arguments = ["-x", name]
-        check.standardOutput = FileHandle.nullDevice
-        check.standardError = FileHandle.nullDevice
-        do {
-            try check.run()
-            check.waitUntilExit()
-            return check.terminationStatus == 0
-        } catch {
-            return false
+    public func restoreOfficialEndpoint() throws {
+        guard isCurrentlyPointedToBridge else { return }
+        let previous = (try? Data(contentsOf: endpointBackupURL)).flatMap { try? JSONDecoder().decode(PreviousEndpoint.self, from: $0) }
+        if let content = previous?.content {
+            try content.write(to: endpointFileURL, atomically: true, encoding: .utf8)
+        } else {
+            // Let Antigravity choose its current official default after updates.
+            try FileManager.default.removeItem(at: endpointFileURL)
         }
+    }
+
+    @MainActor
+    public func relaunchAntigravityApp() async throws {
+        let appURL = URL(fileURLWithPath: "/Applications/Antigravity.app")
+        let running = NSWorkspace.shared.runningApplications.filter { $0.bundleURL?.standardizedFileURL == appURL }
+        for app in running {
+            guard app.terminate() else { throw BridgeError("Antigravity could not quit. Save your work and restart it to apply the bridge settings.") }
+        }
+        for _ in 0..<100 {
+            if running.allSatisfy(\.isTerminated) { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        guard running.allSatisfy(\.isTerminated) else {
+            throw BridgeError("Antigravity is still closing. Save your work and restart it to apply the bridge settings.")
+        }
+        let options = NSWorkspace.OpenConfiguration()
+        _ = try await NSWorkspace.shared.openApplication(at: appURL, configuration: options)
     }
 
     public func setBridgeEnabled(
@@ -246,18 +325,25 @@ public final class AntigravityBridgeManager: @unchecked Sendable {
         modelMode: AntigravityModelMode,
         customModelsText: String
     ) async throws {
-        try saveBridgeConfig(
-            nineRouterUrl: nineRouterUrl,
-            apiKey: apiKey,
-            modelMode: modelMode,
-            customModelsText: customModelsText
-        )
+        guard !isSwitching else { throw BridgeError("A bridge change is already in progress.") }
+        isSwitching = true
+        defer { isSwitching = false }
+        if let startTask { _ = try? await startTask.value }
         if enabled {
+            try saveBridgeConfig(nineRouterUrl: nineRouterUrl, apiKey: apiKey, modelMode: modelMode, customModelsText: customModelsText)
             try await startProxy()
         } else {
-            try "https://daily-cloudcode-pa.googleapis.com".write(to: endpointFileURL, atomically: true, encoding: .utf8)
+            try restoreOfficialEndpoint()
             stopProxy()
+            if FileManager.default.fileExists(atPath: configJsonURL.path) {
+                try FileManager.default.removeItem(at: configJsonURL)
+            }
         }
-        await relaunchAntigravityApp()
     }
+}
+
+private struct BridgeError: LocalizedError {
+    let message: String
+    init(_ message: String) { self.message = message }
+    var errorDescription: String? { message }
 }

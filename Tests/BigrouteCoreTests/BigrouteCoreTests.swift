@@ -141,7 +141,7 @@ import Testing
     try? FileManager.default.removeItem(at: directory)
 }
 
-@Test func sharedSnapshotFallsBackToLegacyAndDualWrites() throws {
+@Test func snapshotPrefersPrivateCacheAndOnlyReadsLegacyForMigration() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let primaryURL = directory.appendingPathComponent("Bigroute/quota-snapshot.json")
     let legacyURL = directory.appendingPathComponent("RouterQuota/quota-snapshot.json")
@@ -155,15 +155,16 @@ import Testing
     try FileManager.default.createDirectory(at: primaryURL.deletingLastPathComponent(), withIntermediateDirectories: true)
     try FileManager.default.createDirectory(at: legacyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
     try encoder.encode(older).write(to: primaryURL)
-    try encoder.encode(newer).write(to: legacyURL)
-    #expect(store.load() == newer)
+    let originalLegacyBytes = try encoder.encode(newer)
+    try originalLegacyBytes.write(to: legacyURL)
+    #expect(store.load() == older)
 
     try Data("invalid snapshot".utf8).write(to: primaryURL)
     #expect(store.load() == newer)
 
     try store.save(latest)
     #expect(FileManager.default.fileExists(atPath: primaryURL.path))
-    #expect(FileManager.default.fileExists(atPath: legacyURL.path))
+    #expect(try Data(contentsOf: legacyURL) == originalLegacyBytes)
     #expect(store.load() == latest)
     try? FileManager.default.removeItem(at: directory)
 }
@@ -201,7 +202,7 @@ import Testing
     defaults.set(persisted, forKey: "routerQuota.configuration.v2")
     defaults.set(Data(#"{"autoDisabledConnectionIDs":["account-1"]}"#.utf8), forKey: stateKey)
 
-    let configuration = CredentialStore(defaults: defaults).load()
+    let configuration = try CredentialStore(defaults: defaults).load()
     #expect(configuration.providers.count == 1)
     #expect(configuration.providers[0].apiKind == .nineRouter)
     #expect(defaults.data(forKey: stateKey) == nil)
@@ -516,10 +517,14 @@ import Testing
 }
 
 @Test func importsLegacyProviderCaches() throws {
-    let home = FileManager.default.homeDirectoryForCurrentUser
-    let legacyDirectory = home.appendingPathComponent("Library/Application Support/Codex Model Switcher")
-    guard FileManager.default.fileExists(atPath: legacyDirectory.path) else { return }
-    let imported = try #require(SharedQuotaStore().loadLegacySnapshot())
+    let legacyDirectory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: legacyDirectory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: legacyDirectory) }
+    for filename in ["nineRouter-quota-cache.json", "omni-quota-cache.json"] {
+        let cache = Data(#"{"savedAt":"2026-08-01T00:00:00Z","accounts":[{"id":"one","provider":"codex","label":"Work","plan":"plus","limitReached":false,"quotas":[],"resetCredits":{"availableCount":0},"status":"available"}]}"#.utf8)
+        try cache.write(to: legacyDirectory.appending(path: filename))
+    }
+    let imported = try #require(SharedQuotaStore().loadLegacySnapshot(directory: legacyDirectory))
     #expect(!imported.accounts.isEmpty)
     #expect(!imported.accounts(for: LegacyProviderID.nineRouter).isEmpty)
     #expect(!imported.accounts(for: LegacyProviderID.omniRouter).isEmpty)

@@ -5,11 +5,8 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT="$ROOT_DIR/Bigroute.xcodeproj"
 DERIVED="$ROOT_DIR/.build/BigrouteDerived"
 APP="$DERIVED/Build/Products/Debug/Bigroute.app"
-INSTALLED_APP="/Applications/Bigroute.app"
 MODE="${1:-run}"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
-
-pkill -x Bigroute 2>/dev/null || true
 
 xcodebuild \
   -project "$PROJECT" \
@@ -36,11 +33,8 @@ codesign --force --sign - --timestamp=none --generate-entitlement-der \
   --entitlements "$ROOT_DIR/Config/Bigroute/Bigroute.entitlements" "$APP"
 codesign --verify --deep --strict "$APP"
 
-ditto "$APP" "$INSTALLED_APP"
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
-  -f -R -trusted "$INSTALLED_APP"
-APP="$INSTALLED_APP"
-
+# Keep development builds in DerivedData. Overwriting the signed office app
+# with an ad-hoc build changes its Keychain identity on every compilation.
 case "$MODE" in
   run)
     /usr/bin/open -n "$APP"

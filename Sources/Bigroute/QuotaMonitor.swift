@@ -22,8 +22,14 @@ final class QuotaMonitor {
     )
     private static let automaticRefreshMinimumInterval: TimeInterval = 15
 
-    var configuration: BigrouteConfiguration
-    var snapshot: BigrouteSnapshot
+    var configuration: BigrouteConfiguration {
+        didSet { if oldValue.sortOrder != configuration.sortOrder { rebuildAccountOrder() } }
+    }
+    var snapshot: BigrouteSnapshot {
+        didSet { rebuildAccountOrder() }
+    }
+    private var orderedAccounts: [UUID: [CodexQuotaAccount]] = [:]
+    private(set) var bridgeError: String?
     var selectedProviderID: UUID?
     var isRefreshing = false
     var isRunningManualAction = false
@@ -31,6 +37,11 @@ final class QuotaMonitor {
     var isSwitchingAntigravityBridge = false
     private(set) var isLoadingConfiguration = true
     var errorMessage: String?
+    private(set) var configurationLoadError: String?
+    private var persistedConfiguration: BigrouteConfiguration?
+    private var refreshTask: Task<Void, Never>?
+    private var refreshRequested = false
+    private var accountRevision = 0
 
     private let credentialStore = CredentialStore()
     private let snapshotStore = SharedQuotaStore()
@@ -47,7 +58,14 @@ final class QuotaMonitor {
             ?? snapshotStore.loadLegacySnapshot()
             ?? BigrouteSnapshot(providers: [])
         selectedProviderID = snapshot.providers.first?.id
+        rebuildAccountOrder()
     }
+
+    private func rebuildAccountOrder() {
+        orderedAccounts = Dictionary(snapshot.providers.map { ($0.id, configuration.sortOrder.sorted($0.accounts)) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    func sortedAccounts(for providerID: UUID) -> [CodexQuotaAccount] { orderedAccounts[providerID] ?? [] }
 
     var enabledProviders: [CustomQuotaProvider] {
         configuration.providers.filter(\.isEnabled)
@@ -55,32 +73,68 @@ final class QuotaMonitor {
 
     func start() {
         guard startupTask == nil else { return }
+        isLoadingConfiguration = true
+        configurationLoadError = nil
         let manager = AntigravityBridgeManager.shared
-        let shouldRestoreImmediately = configuration.antigravityBridge.isEnabled
-            || manager.isCurrentlyPointedToBridge
-        let immediateRestoreTask: Task<Error?, Never>? = shouldRestoreImmediately
-            ? Task.detached(priority: .userInitiated) {
-                do {
-                    try await manager.restoreBridgeForStartup()
-                    return nil
-                } catch {
-                    return error
-                }
+        // Restore the local listener without waiting for a Keychain dialog and
+        // without restarting Antigravity or disconnecting an active remote user.
+        let restoreTask = Task {
+            if configuration.antigravityBridge.isEnabled {
+                try? await manager.restoreBridgeForStartup()
             }
-            : nil
-
+        }
         startupTask = Task { [weak self] in
             guard let self else { return }
-            let store = credentialStore
-            let loadedConfiguration = await Task.detached(priority: .userInitiated) {
-                store.load()
-            }.value
-            let immediateRestoreError = await immediateRestoreTask?.value
-            guard !Task.isCancelled else { return }
-            applyLoadedConfiguration(loadedConfiguration)
-            isLoadingConfiguration = false
-            beginMonitoring(immediateRestoreError: immediateRestoreError)
-            startupTask = nil
+            defer { startupTask = nil; isLoadingConfiguration = false }
+            do {
+                let store = credentialStore
+                let loaded = try await Task.detached(priority: .userInitiated) { try store.load() }.value
+                guard !Task.isCancelled else { return }
+                persistedConfiguration = loaded
+                applyLoadedConfiguration(loaded)
+                scheduleTimer()
+                isLoadingConfiguration = false
+                refresh()
+                await restoreTask.value
+                if configuration.antigravityBridge.isEnabled {
+                    await synchronizeBridgeConfiguration()
+                } else if manager.isCurrentlyPointedToBridge {
+                    try await manager.restoreOfficialEndpoint()
+                    await manager.stopProxy()
+                }
+            } catch {
+                // A denied/locked Keychain is not an empty key. Keep metadata
+                // intact and require a successful reload before any save.
+                configurationLoadError = error.localizedDescription
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private var bridgeProvider: CustomQuotaProvider? {
+        enabledProviders.first(where: { $0.apiKind == .nineRouter })
+    }
+
+    private func synchronizeBridgeConfiguration() async {
+        guard !isSwitchingAntigravityBridge else { return }
+        isSwitchingAntigravityBridge = true
+        defer { isSwitchingAntigravityBridge = false }
+        do {
+            guard let provider = bridgeProvider else {
+                try await AntigravityBridgeManager.shared.setBridgeEnabled(false, nineRouterUrl: "", apiKey: "", modelMode: .keepOfficial, customModelsText: "")
+                configuration.antigravityBridge.isEnabled = false
+                try credentialStore.save(configuration, previous: persistedConfiguration)
+                persistedConfiguration = configuration
+                throw ConfigurationError("Bridge disabled because no enabled 9Router provider is configured.")
+            }
+            let bridge = configuration.antigravityBridge
+            let manager = AntigravityBridgeManager.shared
+            try await manager.saveBridgeConfig(nineRouterUrl: provider.endpoint, apiKey: provider.apiKey, modelMode: bridge.modelMode, customModelsText: bridge.customModelsText)
+            try await manager.restoreBridgeForStartup()
+            try await manager.validateAntigravityConnection()
+            bridgeError = nil
+        } catch {
+            bridgeError = error.localizedDescription
         }
     }
 
@@ -97,49 +151,14 @@ final class QuotaMonitor {
         }
     }
 
-    private func beginMonitoring(immediateRestoreError: Error?) {
-        scheduleTimer()
-        refresh()
-        if configuration.antigravityBridge.isEnabled {
-            Self.routingLogger.info("Restoring Antigravity bridge on startup")
-            let nineRouter = configuration.providers.first(where: { $0.apiKind == .nineRouter })
-                ?? configuration.providers.first
-            let url = nineRouter?.endpoint ?? "https://9router.bigroll.vn"
-            let apiKey = nineRouter?.apiKey ?? ""
-            let modelMode = configuration.antigravityBridge.modelMode
-            let customModelsText = configuration.antigravityBridge.customModelsText
-            Task {
-                do {
-                    let manager = AntigravityBridgeManager.shared
-                    try await Task.detached(priority: .userInitiated) {
-                        try manager.saveBridgeConfig(
-                            nineRouterUrl: url,
-                            apiKey: apiKey,
-                            modelMode: modelMode,
-                            customModelsText: customModelsText
-                        )
-                        try await manager.restoreBridgeForStartup()
-                    }.value
-                    Self.routingLogger.info("Antigravity bridge restored on startup")
-                } catch {
-                    Self.routingLogger.error("Antigravity bridge startup restore failed: \(error.localizedDescription, privacy: .public)")
-                    errorMessage = error.localizedDescription
-                    configuration.antigravityBridge.isEnabled = false
-                    try? credentialStore.save(configuration)
-                    AntigravityBridgeManager.shared.restoreOfficialEndpoint()
-                }
-            }
-        } else if immediateRestoreError != nil || AntigravityBridgeManager.shared.isCurrentlyPointedToBridge {
-            AntigravityBridgeManager.shared.stopProxy()
-            AntigravityBridgeManager.shared.restoreOfficialEndpoint()
-        }
-    }
-
     func stop() {
         startupTask?.cancel()
         startupTask = nil
         timer?.invalidate()
         timer = nil
+        refreshTask?.cancel()
+        refreshTask = nil
+        refreshRequested = false
     }
 
     func upsertProvider(_ provider: CustomQuotaProvider) {
@@ -161,21 +180,26 @@ final class QuotaMonitor {
     }
 
     func saveConfiguration(refresh shouldRefresh: Bool = true) {
+        guard !isLoadingConfiguration, let previous = persistedConfiguration else { return }
         configuration.refreshIntervalMinutes = min(60, max(1, configuration.refreshIntervalMinutes))
         do {
             try validate(configuration)
-            try credentialStore.save(configuration)
-            snapshot = snapshot.withSortOrder(configuration.sortOrder)
+            try credentialStore.save(configuration, previous: previous)
+            persistedConfiguration = configuration
+            let enabledIDs = Set(enabledProviders.map(\.id))
+            snapshot = BigrouteSnapshot(providers: snapshot.providers.filter { enabledIDs.contains($0.id) }, generatedAt: snapshot.generatedAt, sortOrder: configuration.sortOrder)
             try snapshotStore.save(snapshot)
             errorMessage = nil
             if !enabledProviders.contains(where: { $0.id == selectedProviderID }) {
                 selectedProviderID = enabledProviders.first?.id
             }
             scheduleTimer()
-            if shouldRefresh {
-                refresh(force: true)
+            if shouldRefresh { refresh(force: true) }
+            if configuration.antigravityBridge.isEnabled {
+                Task { await synchronizeBridgeConfiguration() }
             }
         } catch {
+            configuration = persistedConfiguration ?? previous
             errorMessage = error.localizedDescription
         }
     }
@@ -186,51 +210,35 @@ final class QuotaMonitor {
     }
 
     func setAntigravityBridgeEnabled(_ enabled: Bool) async {
-        guard !isSwitchingAntigravityBridge else { return }
+        guard !isLoadingConfiguration, !isSwitchingAntigravityBridge, let previous = persistedConfiguration else { return }
         isSwitchingAntigravityBridge = true
         defer { isSwitchingAntigravityBridge = false }
-
-        let nineRouter = configuration.providers.first(where: { $0.apiKind == .nineRouter })
-            ?? configuration.providers.first
-
-        let url = nineRouter?.endpoint ?? "https://9router.bigroll.vn"
-        let apiKey = nineRouter?.apiKey ?? ""
-        let previousEnabled = configuration.antigravityBridge.isEnabled
-        // Reflect the requested state immediately; revert it if startup fails.
-        // The actual proxy switch still completes before persistence.
-        configuration.antigravityBridge.isEnabled = enabled
-
         do {
-            let modelMode = configuration.antigravityBridge.modelMode
-            let customModelsText = configuration.antigravityBridge.customModelsText
+            if enabled && bridgeProvider == nil { throw ConfigurationError("Enable a provider configured as 9Router before turning on the bridge.") }
+            let provider = bridgeProvider
+            let bridge = configuration.antigravityBridge
             let manager = AntigravityBridgeManager.shared
-            try await Task.detached(priority: .userInitiated) {
-                try await manager.setBridgeEnabled(
-                    enabled,
-                    nineRouterUrl: url,
-                    apiKey: apiKey,
-                    modelMode: modelMode,
-                    customModelsText: customModelsText
-                )
-            }.value
-            let configurationToSave = configuration
-            let store = credentialStore
+            try await manager.setBridgeEnabled(enabled, nineRouterUrl: provider?.endpoint ?? "", apiKey: provider?.apiKey ?? "", modelMode: bridge.modelMode, customModelsText: bridge.customModelsText)
+            configuration.antigravityBridge.isEnabled = enabled
+            // API keys do not change when toggling the bridge; skip Keychain IO.
+            try credentialStore.save(configuration, previous: previous)
+            persistedConfiguration = configuration
+            errorMessage = nil
+            bridgeError = nil
             do {
-                try await Task.detached(priority: .utility) {
-                    try store.save(configurationToSave)
-                }.value
-                errorMessage = nil
+                try await manager.relaunchAntigravityApp()
+                if enabled {
+                    try await Task.sleep(for: .seconds(2))
+                    try await manager.validateAntigravityConnection()
+                }
             } catch {
-                // The bridge is already switched; report persistence failure
-                // without rolling the UI back to a state that is no longer true.
-                errorMessage = "Bridge switched, but settings could not be saved: \(error.localizedDescription)"
+                bridgeError = "Bridge settings saved. \(error.localizedDescription)"
             }
         } catch {
-            // Do not persist a UI toggle until the endpoint and proxy have both
-            // been switched successfully; otherwise the dashboard lies about
-            // the actual Antigravity state after a startup failure.
-            configuration.antigravityBridge.isEnabled = previousEnabled
-            errorMessage = error.localizedDescription
+            // Show the actual endpoint state even if persistence fails.
+            configuration.antigravityBridge = previous.antigravityBridge
+            configuration.antigravityBridge.isEnabled = AntigravityBridgeManager.shared.isCurrentlyPointedToBridge
+            bridgeError = error.localizedDescription
         }
     }
 
@@ -238,7 +246,7 @@ final class QuotaMonitor {
         _ action: NineRouterAccountAction,
         provider: CustomQuotaProvider
     ) async throws -> NineRouterRoutingResult {
-        guard !isRunningManualAction else {
+        guard !isLoadingConfiguration, persistedConfiguration != nil, !isRunningManualAction, !isImportingAccounts else {
             throw ManualActionError("Another account action is already running.")
         }
         isRunningManualAction = true
@@ -269,7 +277,7 @@ final class QuotaMonitor {
         from urls: [URL],
         provider: CustomQuotaProvider
     ) async throws -> NineRouterAccountImportResult {
-        guard !isImportingAccounts, !isRunningManualAction else {
+        guard !isLoadingConfiguration, persistedConfiguration != nil, !isImportingAccounts, !isRunningManualAction else {
             throw AccountImportStateError("Another 9Router account operation is already running.")
         }
         isImportingAccounts = true
@@ -301,6 +309,7 @@ final class QuotaMonitor {
     ) {
         let states = result.accountStates(providerID: providerID)
         guard !states.isEmpty else { return }
+        accountRevision += 1
 
         let providers = snapshot.providers.map { provider -> ProviderQuotaSnapshot in
             guard provider.id == providerID else { return provider }
@@ -331,7 +340,11 @@ final class QuotaMonitor {
 
     func refresh(force: Bool = false) {
         let now = Date()
-        guard !isRefreshing else { return }
+        guard !isLoadingConfiguration, persistedConfiguration != nil else { return }
+        if isRefreshing {
+            refreshRequested = refreshRequested || force
+            return
+        }
         if !force {
             if let lastRefreshAttemptAt,
                now.timeIntervalSince(lastRefreshAttemptAt) < Self.automaticRefreshMinimumInterval {
@@ -342,15 +355,25 @@ final class QuotaMonitor {
         lastRefreshAttemptAt = now
         let providers = enabledProviders
         let previousSnapshot = snapshot
+        let revision = accountRevision
         Self.quotaLogger.info(
             "Refresh started providers=\(providers.count, privacy: .public) forced=\(force, privacy: .public)"
         )
 
-        Task {
+        refreshTask = Task {
             let results = await Self.load(providers: providers, force: force)
+            guard !Task.isCancelled else { isRefreshing = false; return }
+            // A request started before a manual action cannot undo its result.
+            if accountRevision != revision {
+                isRefreshing = false
+                refreshTask = nil
+                refreshRequested = false
+                refresh(force: true)
+                return
+            }
             let now = Date()
-            let snapshots = providers.map { provider -> ProviderQuotaSnapshot in
-                guard let result = results.first(where: { $0.provider.id == provider.id }) else {
+            let snapshots = enabledProviders.map { provider -> ProviderQuotaSnapshot in
+                guard let result = results.first(where: { $0.provider == provider }) else {
                     return ProviderQuotaSnapshot(
                         id: provider.id,
                         name: provider.name,
@@ -360,34 +383,10 @@ final class QuotaMonitor {
                     )
                 }
                 if let accounts = result.accounts {
-                    let previousAccounts = previousSnapshot.accounts(for: provider.id)
-                    let previousAccountsByID = Dictionary(
-                        previousAccounts.map { ($0.id, $0) },
-                        uniquingKeysWith: { first, _ in first }
-                    )
-                    let mergedAccounts = accounts.map { account -> CodexQuotaAccount in
-                        let prefixedID = "\(provider.id.uuidString):\(account.id)"
-                        let previous = previousAccountsByID[prefixedID] ?? previousAccountsByID[account.id]
-                        if account.quotas.isEmpty, let previous, !previous.quotas.isEmpty {
-                            return CodexQuotaAccount(
-                                id: account.id,
-                                provider: account.provider,
-                                label: account.label,
-                                plan: (account.plan.isEmpty || account.plan == "unknown") ? previous.plan : account.plan,
-                                limitReached: account.limitReached,
-                                quotas: previous.quotas,
-                                resetCredits: account.resetCredits,
-                                status: account.status,
-                                errorCode: account.errorCode,
-                                isActive: account.isActive
-                            )
-                        }
-                        return account
-                    }
                     return ProviderQuotaSnapshot(
                         id: provider.id,
                         name: provider.name,
-                        accounts: mergedAccounts,
+                        accounts: accounts,
                         updatedAt: now,
                         lastError: nil
                     )
@@ -423,6 +422,11 @@ final class QuotaMonitor {
                 "Refresh finished errors=\(errors.count, privacy: .public) cachedAccounts=\(self.snapshot.accounts.count, privacy: .public)"
             )
             isRefreshing = false
+            refreshTask = nil
+            if refreshRequested {
+                refreshRequested = false
+                refresh(force: true)
+            }
         }
     }
 

@@ -15,6 +15,28 @@ if [[ ! -d "$APP_PATH" || ! -s "$APPCAST_PATH" || ! -s "$ZIP_PATH" \
 fi
 
 public_key="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP_PATH/Contents/Info.plist")"
+python3 - "$APPCAST_PATH" "$ZIP_PATH" "$APP_PATH/Contents/Info.plist" <<'PY'
+import pathlib, plistlib, sys, urllib.parse, xml.etree.ElementTree as ET, zipfile
+feed, archive, app = map(pathlib.Path, sys.argv[1:])
+ns = {'sparkle': 'http://www.andymatuschak.org/xml-namespaces/sparkle'}
+items = ET.parse(feed).getroot().findall('./channel/item')
+if len(items) != 1:
+    sys.exit('Expected exactly one update in the channel feed.')
+item = items[0]
+with zipfile.ZipFile(archive) as zipped:
+    info = plistlib.loads(zipped.read('Bigroute.app/Contents/Info.plist'))
+built = plistlib.loads(app.read_bytes())
+for key in ('CFBundleIdentifier', 'CFBundleVersion', 'CFBundleShortVersionString', 'SUPublicEDKey', 'SUFeedURL'):
+    if not info.get(key) or info[key] != built.get(key):
+        sys.exit(f'The update ZIP and built app disagree on {key}.')
+for tag, key in [('version', 'CFBundleVersion'), ('shortVersionString', 'CFBundleShortVersionString')]:
+    if item.findtext(f'sparkle:{tag}', namespaces=ns) != info[key]:
+        sys.exit(f'The appcast does not match the update ZIP: {tag}.')
+enclosure = item.find('enclosure')
+url = urllib.parse.urlparse(enclosure.get('url', '') if enclosure is not None else '')
+if url.scheme != 'https' or pathlib.PurePosixPath(url.path).name != archive.name:
+    sys.exit('The appcast does not reference the expected HTTPS update archive.')
+PY
 feed_length="$(sed -n 's/^length: //p' "$APPCAST_PATH" | tail -1)"
 enclosure_signature="$(sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p' "$APPCAST_PATH" | head -1)"
 enclosure_length="$(sed -n 's/.*<enclosure[^>]* length="\([0-9][0-9]*\)".*/\1/p' "$APPCAST_PATH" | head -1)"
@@ -49,4 +71,4 @@ fi
   "$ZIP_PATH" \
   "$enclosure_signature"
 
-echo "Verified Sparkle feed and enclosure signatures with the key matching the built app."
+echo "Verified Sparkle signatures and matching feed, archive, and app metadata."

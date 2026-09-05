@@ -64,17 +64,6 @@ public struct CustomQuotaProvider: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-/// Sanitized provider metadata written beside the quota snapshot for WidgetKit.
-public struct QuotaProviderDescriptor: Codable, Equatable, Identifiable, Sendable {
-    public let id: UUID
-    public let name: String
-
-    public init(id: UUID, name: String) {
-        self.id = id
-        self.name = name
-    }
-}
-
 public enum LegacyProviderID {
     public static let nineRouter = UUID(uuidString: "6F66E771-9C74-4B3B-9B1D-9B0A57D6AF91")!
     public static let omniRouter = UUID(uuidString: "9F3AA02E-C6DB-4C80-9BA4-10C2DD6C0B72")!

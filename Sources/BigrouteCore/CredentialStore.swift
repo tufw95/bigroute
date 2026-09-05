@@ -26,6 +26,7 @@ public struct BigrouteConfiguration: Equatable, Sendable {
 public struct CredentialStore: @unchecked Sendable {
     private let defaults: UserDefaults
     private let envURL: URL
+    private let keychain: CredentialKeychain
     private let v2ConfigKey = "routerQuota.configuration.v2"
     private let legacyConfigKey = "routerQuota.configuration"
 
@@ -53,20 +54,32 @@ public struct CredentialStore: @unchecked Sendable {
 
     public init(defaults: UserDefaults = .standard, envURL: URL? = nil) {
         self.defaults = defaults
+        self.keychain = .system
         self.envURL = envURL ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".codex/.env")
     }
 
-    public func load() -> BigrouteConfiguration {
+    init(defaults: UserDefaults, envURL: URL, keychain: CredentialKeychain) {
+        self.defaults = defaults
+        self.envURL = envURL
+        self.keychain = keychain
+    }
+
+    public func load() throws -> BigrouteConfiguration {
+        if defaults.data(forKey: v2ConfigKey) != nil && loadPersisted() == nil {
+            throw CredentialConfigurationError()
+        }
         if let persisted = loadPersisted() {
-            removeRetiredAutomaticRoutingData(from: persisted)
-            return BigrouteConfiguration(
-                providers: persisted.providers.map { provider in
+            guard persisted.schemaVersion <= 5, Set(persisted.providers.map(\.id)).count == persisted.providers.count else {
+                throw CredentialConfigurationError()
+            }
+            let configuration = BigrouteConfiguration(
+                providers: try persisted.providers.map { provider in
                     CustomQuotaProvider(
                         id: provider.id,
                         name: provider.name,
                         endpoint: provider.endpoint,
-                        apiKey: Keychain.value(for: Self.keychainAccount(provider.id)) ?? "",
+                        apiKey: try keychain.read(Self.keychainAccount(provider.id)) ?? "",
                         apiKind: provider.apiKind,
                         isEnabled: provider.isEnabled
                     )
@@ -75,12 +88,14 @@ public struct CredentialStore: @unchecked Sendable {
                 sortOrder: persisted.sortOrder ?? .quotaDescending,
                 antigravityBridge: persisted.antigravityBridge ?? AntigravityBridgeConfig(isEnabled: AntigravityBridgeManager.shared.isCurrentlyPointedToBridge)
             )
+            removeRetiredAutomaticRoutingData(from: persisted)
+            return configuration
         }
 
-        let migrated = migrateLegacy()
+        let migrated = try migrateLegacy()
         // Make migration one-time and idempotent. Secrets are copied before the
         // v2 metadata is written; old credentials are intentionally retained.
-        try? save(migrated)
+        try save(migrated)
         return migrated
     }
 
@@ -106,7 +121,7 @@ public struct CredentialStore: @unchecked Sendable {
         )
     }
 
-    public func save(_ configuration: BigrouteConfiguration) throws {
+    public func save(_ configuration: BigrouteConfiguration, previous: BigrouteConfiguration? = nil) throws {
         let previousProviderIDs = Set(loadPersisted()?.providers.map(\.id) ?? [])
         let providers = configuration.providers.map {
             PersistedProvider(
@@ -120,7 +135,12 @@ public struct CredentialStore: @unchecked Sendable {
 
         // Write credentials first so a failed metadata write never loses a key.
         for provider in configuration.providers {
-            try Keychain.save(provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines), for: Self.keychainAccount(provider.id))
+            let key = provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            let oldKey = previous?.providers.first(where: { $0.id == provider.id })?.apiKey
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if key != oldKey {
+                try keychain.save(key, Self.keychainAccount(provider.id))
+            }
         }
 
         let settings = PersistedSettings(
@@ -131,14 +151,13 @@ public struct CredentialStore: @unchecked Sendable {
             antigravityBridge: configuration.antigravityBridge
         )
         let data = try JSONEncoder().encode(settings)
-        defaults.set(data, forKey: v2ConfigKey)
-
         let currentIDs = Set(providers.map(\.id))
         for removed in previousProviderIDs.subtracting(currentIDs) {
-            Keychain.delete(for: Self.keychainAccount(removed))
-            Keychain.delete(for: Self.retiredDashboardPasswordAccount(removed))
+            try keychain.delete(Self.keychainAccount(removed))
+            try? keychain.delete(Self.retiredDashboardPasswordAccount(removed))
             defaults.removeObject(forKey: Self.retiredAutomationStateKey(removed))
         }
+        defaults.set(data, forKey: v2ConfigKey)
     }
 
     public static func keychainAccount(_ providerID: UUID) -> String {
@@ -153,6 +172,7 @@ public struct CredentialStore: @unchecked Sendable {
     /// Automatic routing was retired in 1.2.2. Normalize the persisted JSON
     /// before startup so even a later downgrade cannot silently re-enable it.
     private func removeRetiredAutomaticRoutingData(from persisted: PersistedSettings) {
+        guard persisted.schemaVersion < 5 else { return }
         let normalized = PersistedSettings(
             schemaVersion: 5,
             providers: persisted.providers,
@@ -164,7 +184,7 @@ public struct CredentialStore: @unchecked Sendable {
             defaults.set(data, forKey: v2ConfigKey)
         }
         for provider in persisted.providers {
-            Keychain.delete(for: Self.retiredDashboardPasswordAccount(provider.id))
+            try? keychain.delete(Self.retiredDashboardPasswordAccount(provider.id))
             defaults.removeObject(forKey: Self.retiredAutomationStateKey(provider.id))
         }
     }
@@ -177,7 +197,7 @@ public struct CredentialStore: @unchecked Sendable {
         "routerQuota.nineRouterAutomationState.\(providerID.uuidString).v1"
     }
 
-    private func migrateLegacy() -> BigrouteConfiguration {
+    private func migrateLegacy() throws -> BigrouteConfiguration {
         let legacySuite = UserDefaults(suiteName: "vn.bigroll.codex-model-switcher")
         var nineURL = defaults.string(forKey: "routerTargetURL.nineRouter")
             ?? defaults.string(forKey: "routerTargetURL")
@@ -196,9 +216,9 @@ public struct CredentialStore: @unchecked Sendable {
             refresh = settings.refreshIntervalMinutes
         }
 
-        var nineKey = Keychain.value(for: "nineRouterKey") ?? ""
-        var omniKey = Keychain.value(for: "omniKey") ?? ""
-        var omniQuotaToken = Keychain.value(for: "omniQuotaToken") ?? ""
+        var nineKey = try keychain.read("nineRouterKey") ?? ""
+        var omniKey = try keychain.read("omniKey") ?? ""
+        var omniQuotaToken = try keychain.read("omniQuotaToken") ?? ""
         if let content = try? String(contentsOf: envURL) {
             let values = Self.parseEnv(content)
             if nineURL.isEmpty { nineURL = values["NINEROUTER_URL"] ?? values["NINEROUTER_BASE_URL"] ?? "" }
@@ -248,10 +268,22 @@ public struct CredentialStore: @unchecked Sendable {
     }
 }
 
+struct CredentialKeychain: Sendable {
+    var read: @Sendable (String) throws -> String?
+    var save: @Sendable (String, String) throws -> Void
+    var delete: @Sendable (String) throws -> Void
+
+    static let system = CredentialKeychain(read: Keychain.value, save: Keychain.save, delete: Keychain.delete)
+}
+
+private struct CredentialConfigurationError: LocalizedError {
+    var errorDescription: String? { "Saved provider settings could not be read. Existing settings and credentials have been preserved." }
+}
+
 private enum Keychain {
     private static let service = "com.routerquota.credentials"
 
-    static func value(for account: String) -> String? {
+    static func value(for account: String) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -260,9 +292,13 @@ private enum Keychain {
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess else { throw KeychainError(status: status) }
+        guard let data = result as? Data, let value = String(data: data, encoding: .utf8) else {
+            throw KeychainError(status: errSecDecode)
+        }
+        return value
     }
 
     static func save(_ value: String, for account: String) throws {
@@ -272,14 +308,14 @@ private enum Keychain {
             kSecAttrAccount as String: account
         ]
         if value.isEmpty {
-            delete(for: account)
+            try delete(for: account)
             return
         }
         let data = Data(value.utf8)
-        let status: OSStatus
-        if SecItemCopyMatching(lookup as CFDictionary, nil) == errSecSuccess {
-            status = SecItemUpdate(lookup as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        } else {
+        // Update in place to retain the item's ACL. Only create on not-found;
+        // denial/locked Keychain must never masquerade as a missing credential.
+        var status = SecItemUpdate(lookup as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if status == errSecItemNotFound {
             var create = lookup
             create[kSecValueData as String] = data
             create[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
@@ -288,13 +324,14 @@ private enum Keychain {
         guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
-    static func delete(for account: String) {
+    static func delete(for account: String) throws {
         let lookup: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        SecItemDelete(lookup as CFDictionary)
+        let status = SecItemDelete(lookup as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw KeychainError(status: status) }
     }
 }
 

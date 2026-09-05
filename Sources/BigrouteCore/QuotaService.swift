@@ -1,7 +1,7 @@
 import Foundation
 import OSLog
 
-/// Shared quota bands keep the app and widget aligned with the rounded value shown to users.
+/// Quota bands match the rounded percentage shown to users.
 public enum QuotaIndicatorBand: Equatable, Sendable {
     case unavailable
     case critical
@@ -14,7 +14,7 @@ public enum QuotaIndicatorBand: Equatable, Sendable {
             return
         }
 
-        switch Int(remaining.rounded()) {
+        switch min(100, max(0, remaining)).rounded() {
         case ...20: self = .critical
         case ...70: self = .warning
         default: self = .healthy
@@ -22,7 +22,7 @@ public enum QuotaIndicatorBand: Equatable, Sendable {
     }
 }
 
-/// The account ordering preference shared by the app and its widget.
+/// Account ordering preference for the menu bar.
 public enum AccountSortOrder: String, Codable, CaseIterable, Identifiable, Sendable {
     case quotaDescending
     case quotaAscending
@@ -45,7 +45,11 @@ public enum AccountSortOrder: String, Codable, CaseIterable, Identifiable, Senda
     }
 
     public func sorted(_ accounts: [CodexQuotaAccount]) -> [CodexQuotaAccount] {
-        accounts.sorted { lhs, rhs in
+        // Parse each date once, not inside every O(n log n) comparison.
+        let resetDates = (self == .refreshSoonest || self == .refreshLatest)
+            ? Dictionary(accounts.compactMap { account in resetDate(for: account).map { (account.id, $0) } }, uniquingKeysWith: { first, _ in first })
+            : [:]
+        return accounts.sorted { lhs, rhs in
             let comparison: Bool?
             switch self {
             case .quotaDescending:
@@ -57,9 +61,9 @@ public enum AccountSortOrder: String, Codable, CaseIterable, Identifiable, Senda
             case .nameDescending:
                 comparison = compareNames(lhs.label, rhs.label, descending: true)
             case .refreshSoonest:
-                comparison = compare(resetDate(for: lhs), resetDate(for: rhs), descending: false)
+                comparison = compare(resetDates[lhs.id], resetDates[rhs.id], descending: false)
             case .refreshLatest:
-                comparison = compare(resetDate(for: lhs), resetDate(for: rhs), descending: true)
+                comparison = compare(resetDates[lhs.id], resetDates[rhs.id], descending: true)
             }
             if let comparison { return comparison }
             let labelOrder = lhs.label.localizedCaseInsensitiveCompare(rhs.label)
@@ -110,11 +114,25 @@ public struct CodexQuotaWindow: Codable, Equatable, Identifiable, Sendable {
         unlimited: Bool
     ) {
         self.key = key
-        self.used = used
-        self.total = total
-        self.remaining = remaining
+        self.used = used.isFinite ? max(0, used) : 0
+        self.total = total.isFinite ? max(0, total) : 0
+        self.remaining = remaining.isFinite ? min(100, max(0, remaining)) : 0
         self.resetAt = resetAt
         self.unlimited = unlimited
+    }
+
+    private enum CodingKeys: String, CodingKey { case key, used, total, remaining, resetAt, unlimited }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            key: try values.decode(String.self, forKey: .key),
+            used: try values.decode(Double.self, forKey: .used),
+            total: try values.decode(Double.self, forKey: .total),
+            remaining: try values.decode(Double.self, forKey: .remaining),
+            resetAt: try values.decodeIfPresent(String.self, forKey: .resetAt),
+            unlimited: try values.decode(Bool.self, forKey: .unlimited)
+        )
     }
 }
 
@@ -272,7 +290,11 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
     }
 
     public var isFreePlan: Bool {
-        plan.lowercased() == "free" || errorCode == "plan_free" || errorCode == "subscription_expired"
+        plan.lowercased() == "free"
+    }
+
+    public var isExpiredPlan: Bool {
+        errorCode == "plan_free" || errorCode == "subscription_expired" || status.lowercased() == "expired"
     }
 
     public var isAuthError: Bool {
@@ -280,7 +302,11 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
     }
 
     public var isUnavailable: Bool {
-        status.lowercased() == "unavailable" || isAuthError || isFreePlan || quotas.isEmpty
+        ["unavailable", "expired", "error", "invalid"].contains(status.lowercased()) || isAuthError || isExpiredPlan || quotas.isEmpty
+    }
+
+    public var canServeRequests: Bool {
+        isRoutingActive && !isUnavailable && !limitReached && quotas.allSatisfy { $0.unlimited || $0.remaining > 0 }
     }
 
     /// Providers that do not expose routing state remain visible.
@@ -297,8 +323,8 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
     public func sourced(providerID: UUID) -> CodexQuotaAccount {
         let source = providerID.uuidString
         return CodexQuotaAccount(
-            id: "\(source):\(id)",
-            provider: source,
+            id: id.hasPrefix("\(source):") ? id : "\(source):\(id)",
+            provider: provider,
             label: label,
             plan: plan,
             limitReached: limitReached,
@@ -570,7 +596,7 @@ public struct OmniQuotaResponse: Equatable, Sendable {
     }
 
     public var summary: CodexQuotaSummary {
-        let available = accounts.filter { !$0.limitReached && $0.status != "expired" }.count
+        let available = accounts.filter(\.canServeRequests).count
         let lowest = accounts
             .compactMap(\.primaryQuota?.remaining)
             .min()
@@ -662,12 +688,6 @@ public final class OmniQuotaService: @unchecked Sendable {
             )
         }
         return OmniQuotaResponse(accounts: accounts)
-    }
-
-    public static func sanitizedResponse(
-        accounts: [CodexQuotaAccount]
-    ) -> OmniQuotaResponse {
-        OmniQuotaResponse(accounts: accounts.map(sanitizedAccount))
     }
 
     public static func quotaURL(from baseURL: URL) -> URL {
@@ -810,7 +830,10 @@ public final class OmniQuotaService: @unchecked Sendable {
         from provider: [String: Any],
         providerLimits: [String: Any]? = nil
     ) -> CodexQuotaAccount? {
-        let connectionID = connectionID(in: provider) ?? UUID().uuidString
+        // An unstable random ID silently associates cached quota with different
+        // accounts. Require a stable identity from the provider instead.
+        guard let connectionID = connectionID(in: provider)
+            ?? firstString(in: provider, keys: ["email", "name"]) else { return nil }
         let name = firstString(in: provider, keys: [
             "name", "email", "label", "provider"
         ]) ?? connectionID
@@ -876,11 +899,11 @@ public final class OmniQuotaService: @unchecked Sendable {
                 ?? (isMeasured ? (remaining.map { $0 <= 0 } ?? false) : false),
             quotas: quotas,
             resetCredits: .init(
-                availableCount: Int(
+                availableCount: max(0, Int(exactly:
                     firstNumber(in: mergedProvider, keys: [
                         "bankedResetCredits", "banked_reset_credits"
                     ])?.rounded() ?? 0
-                )
+                ) ?? 0)
             ),
             status: tokenStatus,
             errorCode: firstString(in: mergedProvider, keys: ["errorCode", "error_code"])
@@ -901,31 +924,6 @@ public final class OmniQuotaService: @unchecked Sendable {
             }
         }
         return merged
-    }
-
-    private static func sanitizedAccount(
-        _ account: CodexQuotaAccount
-    ) -> CodexQuotaAccount {
-        guard let quota = account.primaryQuota,
-              isUnmeasuredFullPlaceholder(
-                  remaining: quota.remaining,
-                  used: quota.used,
-                  total: quota.total
-              ) else {
-            return account
-        }
-        return CodexQuotaAccount(
-            id: account.id,
-            provider: account.provider,
-            label: account.label,
-            plan: account.plan,
-            limitReached: false,
-            quotas: [],
-            resetCredits: account.resetCredits,
-            status: account.status,
-            errorCode: account.errorCode,
-            isActive: account.isActive
-        )
     }
 
     private static func isMeasuredQuota(
@@ -959,20 +957,14 @@ public final class OmniQuotaService: @unchecked Sendable {
         return remaining != 100 || (used != nil && used != 0)
     }
 
-    private static func isUnmeasuredFullPlaceholder(
-        remaining: Double,
-        used: Double?,
-        total: Double?
-    ) -> Bool {
-        remaining == 100
-            && (used == nil || used == 0)
-            && (total == nil || total == 0 || total == 100)
-    }
-
     private static func remainingPercentage(
         provider: [String: Any],
         quota: [String: Any]
     ) -> Double? {
+        if let fraction = firstNumber(in: quota, keys: ["remainingFraction", "remaining_fraction"])
+            ?? firstNumber(in: provider, keys: ["remainingFraction", "remaining_fraction"]) {
+            return clampedPercentage(fraction * 100)
+        }
         let remainingKeys = [
             "percentRemaining", "percent_remaining", "remainingPercent", "remaining_percent",
             "percentageRemaining", "percentage_remaining"
@@ -1013,10 +1005,7 @@ public final class OmniQuotaService: @unchecked Sendable {
 
     private static func percentage(_ value: Double) -> Double? {
         guard value.isFinite else { return nil }
-        // Some APIs encode percentages as fractions while others use 0...100.
-        if value >= 0, value <= 1 {
-            return clampedPercentage(value * 100)
-        }
+        // Percent fields are percentages: 1 means 1%, not 100%.
         return clampedPercentage(value)
     }
 
@@ -1055,13 +1044,15 @@ public final class OmniQuotaService: @unchecked Sendable {
     }
 
     private static func number(_ value: Any?) -> Double? {
-        if let value = value as? Double { return value }
-        if let value = value as? NSNumber { return value.doubleValue }
+        if let value = value as? NSNumber {
+            guard CFGetTypeID(value) != CFBooleanGetTypeID(), value.doubleValue.isFinite else { return nil }
+            return value.doubleValue
+        }
         if let value = value as? String {
             let normalized = value
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .replacingOccurrences(of: "%", with: "")
-            return Double(normalized)
+            return Double(normalized).flatMap { $0.isFinite ? $0 : nil }
         }
         return nil
     }

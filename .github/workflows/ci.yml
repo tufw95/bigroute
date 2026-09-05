@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches-ignore: [ota-feeds]
   pull_request:
 
 permissions:
@@ -33,6 +34,12 @@ jobs:
       - name: Run Swift tests
         run: swift test
 
+      - name: Run Antigravity bridge tests
+        run: node --test Tests/antigravity-bridge-proxy.test.mjs
+
+      - name: Test OTA channel publication
+        run: python3 Tests/publish-channel.test.py
+
       - name: Build Debug app
         run: |
           xcodebuild \
@@ -45,7 +52,7 @@ jobs:
             build
 
       - name: Validate release scripts
-        run: bash -n script/build_and_run.sh scripts/*.sh
+        run: for script in script/build_and_run.sh scripts/*.sh; do bash -n "$script"; done
 
       - name: Reject tracked artifacts and secrets
         shell: bash

@@ -4,6 +4,31 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - Unreleased
+
+### Fixed
+
+- Corrected HTTP forwarding, cancellation, compressed responses, UTF-8 SSE framing, synchronous generation, function-call results, and current model aliases in the Antigravity Bridge. Unknown RPCs and discovery schemas pass through unchanged.
+- Surface missing configuration, unsupported media, malformed tools, and interrupted streams instead of returning misleading successful responses or falling back to Google generation.
+- Reuse the local proxy only when its script hash matches the bundled version. Serialize Bridge changes, restore the previous endpoint on failure/disable, and check the endpoint used by a running Antigravity language server.
+- Preserve configuration after denied Keychain reads; update changed credentials in place and skip Keychain writes when only settings change.
+- Correct percentage/fraction parsing, numeric bounds, provider classification, account availability, and expired-plan detection. A Free plan alone no longer means expired.
+- Prevent removed providers and old refreshes from overwriting current account state. Queue forced refreshes and keep cached failure timestamps accurate.
+- Honor each build's Sparkle channel, expose update errors, and synchronize update buttons with Sparkle's actual readiness.
+
+### Changed
+
+- Publish signed OTA feeds through an atomic Git branch update, reject feed downgrades, retain the legacy feed for existing clients, and verify both public URLs. Interrupted office releases reuse immutable signed archives.
+- Store snapshots per user; read old shared caches only for migration. Cache account sorting and remove unused quota sanitizers, widget descriptors, and obsolete widget instructions.
+- Keep development builds in DerivedData instead of overwriting the installed signed app.
+- Add regression coverage for Bridge transport/conversion, Keychain failure, quota parsing, cache migration, and account availability.
+
+### Known issue / release gate
+
+- Phone Remote Control still reports **Lost connection to the remote instance** when switching conversations. The local proxy tests pass, but the user's phone retest failed. This is not claimed fixed.
+- The inspected official Antigravity 2.12.2 package does not read the Bridge endpoint override. The installed modified package does, but its altered signature also interferes with Antigravity's own updater. Compatibility with future Antigravity releases is not guaranteed.
+- Hold the `office-v1.6.0` release tag until real phone navigation and signed OTA installation have been validated. See `docs/audit-1.6.0.md`.
+
 ## [1.5.3] - 2026-09-05
 
 ### Fixed
@@ -11,14 +36,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Preserved Antigravity Remote Control while the 9Router bridge is enabled by forwarding the official experiment-discovery response that supplies the `jetski-webchannel.googleapis.com` relay.
 - Kept non-generation Cloud Code traffic transparent through the bridge so phone remote control, authentication, telemetry, and other Antigravity services continue to work while generation requests use 9Router.
 - Restored the local bridge during Bigroute relaunch without blocking the menu-bar app on a slow macOS Keychain response.
-
-## [1.4.13] - 2026-09-04
-
-### Changed
-
-- Completely removed Widget extension (BigrouteWidget) and all WidgetKit dependencies to make the app ultra-lightweight and clean.
-- Streamlined UI rendering and eliminated heavy frame animations, ensuring instant and lag-free popover rendering.
-- Simplified shared storage and background monitoring routines.
 
 ## [1.5.2] - 2026-09-05
 
@@ -43,6 +60,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **Dynamic Endpoint Support**: Automatically manages `cloud_code_endpoint.txt` and background bridge proxy (port `50999`), auto-restarting Antigravity on switch.
 - **Preserved Model Metadata & Context Length**: Keeps full 1M token context length and metadata for Google models and seamlessly injects 9Router models (`cx/gpt-5.5`, `ag/claude-sonnet-4-6`...).
 - **Configurable Model Mode**: Allows choosing between *Keep Official Models + 9Router (Recommended)* and *Custom Models*.
+
+## [1.4.13] - 2026-09-04
+
+### Changed
+
+- Completely removed Widget extension (BigrouteWidget) and all WidgetKit dependencies to make the app ultra-lightweight and clean.
+- Streamlined UI rendering and eliminated heavy frame animations, ensuring instant and lag-free popover rendering.
+- Simplified shared storage and background monitoring routines.
 
 ## [1.4.12] - 2026-08-27
 
@@ -278,7 +303,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.4.13...HEAD
+[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.5.3...HEAD
 [1.4.13]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.13
 [1.4.12]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.12
 [1.4.11]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.11
@@ -306,3 +331,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 [1.0.2]: https://github.com/tufw95/bigroute/releases/tag/office-v1.0.2
 [1.0.1]: https://github.com/tufw95/bigroute/releases/tag/office-v1.0.1
 [1.0.0]: https://github.com/tufw95/bigroute/releases/tag/office-v1.0.0
+
+[1.6.0]: https://github.com/tufw95/bigroute/compare/office-v1.5.3...HEAD
+[1.5.0]: https://github.com/tufw95/bigroute/releases/tag/office-v1.5.0
+[1.5.1]: https://github.com/tufw95/bigroute/releases/tag/office-v1.5.1
+[1.5.2]: https://github.com/tufw95/bigroute/releases/tag/office-v1.5.2
+[1.5.3]: https://github.com/tufw95/bigroute/releases/tag/office-v1.5.3

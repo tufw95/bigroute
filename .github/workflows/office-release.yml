@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: office-release-channel
+  group: ota-release-channels
   cancel-in-progress: false
 
 jobs:
@@ -67,7 +67,10 @@ jobs:
         run: ./scripts/verify_monitoring_only.sh
 
       - name: Run tests
-        run: swift test
+        run: |
+          swift test
+          node --test Tests/antigravity-bridge-proxy.test.mjs
+          python3 Tests/publish-channel.test.py
 
       - name: Restore office signing material
         env:
@@ -209,7 +212,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "$APP_BUNDLE_ID"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")" = "$SPARKLE_PUBLIC_KEY"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app/Contents/Info.plist")" \
-            = "https://github.com/${{ github.repository }}/releases/download/office-channel/appcast.xml"
+            = "https://raw.githubusercontent.com/${{ github.repository }}/ota-feeds/office/appcast.xml"
           grep -Eq '<enclosure[^>]+sparkle:edSignature=' "$appcast"
           grep -q 'sparkle-signatures:' "$appcast"
           grep -q "Bigroute-$VERSION.zip" "$appcast"
@@ -230,28 +233,20 @@ jobs:
         run: |
           set -euo pipefail
           notes_path="$RUNNER_TEMP/office-release-notes.md"
-          cat > "$notes_path" <<'NOTES'
-          ## Office OTA channel
-
-          This build is distributed for internal office use and is authenticated by a Sparkle Ed25519 signature.
-
-          Automatic Account Routing is not included. Scheduled refreshes and widgets are read-only, and Bigroute never logs into the 9Router dashboard. Providers explicitly configured as 9Router expose two immediate manual routing actions plus an explicit multi-file JSON import action. Imports use the saved API key, enforce bounded payloads, and never persist account tokens in Bigroute. Installing this update sends no migration request and leaves existing account states unchanged.
-
-          It uses a persistent internal code-signing certificate and is not Apple notarized. Because that certificate has no Apple Team ID, the office build intentionally does not enable Hardened Runtime library validation; Sparkle Ed25519 signatures still authenticate every OTA update. The first installation may require **Privacy & Security > Open Anyway**. Once installed, later office releases update automatically through Bigroute.
-
-          Existing Router Quota 1.0.2 users should update from inside the app. For a manual upgrade, quit Router Quota and remove `/Applications/Router Quota.app` before installing Bigroute so macOS does not retain two widgets with the same compatibility identifier.
-          NOTES
+          awk -v heading="## [$VERSION]" '
+            index($0, heading) == 1 { capture=1; next }
+            capture && /^## \[/ { exit }
+            capture { print }
+          ' CHANGELOG.md > "$notes_path"
+          printf '\nOffice build: persistent internal certificate, signed Sparkle OTA; not Apple notarized.\n' >> "$notes_path"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; resuming publication from the same immutable tag."
-            gh release edit "$TAG" \
-              --title "Bigroute $VERSION Office" \
-              --notes-file "$notes_path"
-            gh release upload "$TAG" \
-              "dist/Bigroute-$VERSION.dmg" \
-              "dist/Bigroute-$VERSION.zip" \
-              "dist/appcast.xml" \
-              --clobber
+            # Resume a failed channel publication using the original signed
+            # bytes. Never replace an archive referenced by a cached appcast.
+            gh release download "$TAG" --dir dist --clobber \
+              --pattern "Bigroute-$VERSION.dmg" --pattern "Bigroute-$VERSION.zip" --pattern appcast.xml
+            SPARKLE_SIGN_UPDATE_PATH="$PWD/.build/sparkle-tools-2.9.4/bin/sign_update" \
+              ZIP_PATH="$PWD/dist/Bigroute-$VERSION.zip" ./scripts/verify_appcast.sh
           else
             gh release create "$TAG" \
               --verify-tag \
@@ -263,27 +258,13 @@ jobs:
               "dist/appcast.xml"
           fi
 
-      - name: Update office channel feed
+      - name: Publish and verify signed office channel feed
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          channel_tag="office-channel"
-          channel_title="Bigroute Office Update Channel"
-          channel_notes="Signed Sparkle feed for Bigroute office builds. Scheduled monitoring is read-only; 9Router account changes require an explicit manual button press."
-          if ! gh release view "$channel_tag" >/dev/null 2>&1; then
-            gh release create "$channel_tag" \
-              --target "$GITHUB_SHA" \
-              --prerelease \
-              --title "$channel_title" \
-              --notes "$channel_notes"
-          else
-            gh release edit "$channel_tag" \
-              --title "$channel_title" \
-              --notes "$channel_notes"
-          fi
-          gh release upload "$channel_tag" dist/appcast.xml --clobber
+          CHANNEL: office
+          VERSION: ${{ steps.release.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+        run: ./scripts/publish_channel.sh
 
       - name: Cleanup signing material
         if: always()
