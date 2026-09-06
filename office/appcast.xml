@@ -1,51 +1,29 @@
-<?xml version="1.0" standalone="yes"?>
-<!-- sparkle-sign-warning:
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
--->
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
-        <title>Router Quota</title>
+        <title>Bigroute</title>
         <item>
-            <title>1.6.0</title>
-            <pubDate>Sun, 06 Sep 2026 10:47:56 +0700</pubDate>
+            <title>1.6.1</title>
+            <pubDate>Sun, 06 Sep 2026 03:58:32 +0000</pubDate>
             <link>https://github.com/tufw95/bigroute</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.6.0</sparkle:fullReleaseNotesLink>
-            <sparkle:version>1006000</sparkle:version>
-            <sparkle:shortVersionString>1.6.0</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.6.1</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1006001</sparkle:version>
+            <sparkle:shortVersionString>1.6.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description sparkle:format="markdown"><![CDATA[
-### Added
-
-- Automated Antigravity ASAR patcher & integrity verification (`antigravity-asar-patcher.mjs`): automatically detects unpatched or freshly updated Antigravity app bundles, applies the custom Cloud Code endpoint loader to `languageServer.js`, updates `ElectronAsarIntegrity` in `Info.plist`, and re-signs binaries ad-hoc so the 9Router bridge persists seamlessly across Antigravity self-updates.
-
 ### Fixed
 
-- Corrected HTTP forwarding, cancellation, compressed responses, UTF-8 SSE framing, synchronous generation, function-call results, and current model aliases in the Antigravity Bridge. Unknown RPCs and discovery schemas pass through unchanged.
-- Surface missing configuration, unsupported media, malformed tools, and interrupted streams instead of returning misleading successful responses or falling back to Google generation.
-- Reuse the local proxy only when its script hash matches the bundled version. Serialize Bridge changes, restore the previous endpoint on failure/disable, and check the endpoint used by a running Antigravity language server.
-- Preserve configuration after denied Keychain reads; update changed credentials in place and skip Keychain writes when only settings change.
-- Correct percentage/fraction parsing, numeric bounds, provider classification, account availability, and expired-plan detection. A Free plan alone no longer means expired.
-- Prevent removed providers and old refreshes from overwriting current account state. Queue forced refreshes and keep cached failure timestamps accurate.
-- Honor each build's Sparkle channel, expose update errors, and synchronize update buttons with Sparkle's actual readiness.
-
-### Changed
-
-- Publish signed OTA feeds through an atomic Git branch update, reject feed downgrades, retain the legacy feed for existing clients, and verify both public URLs. Interrupted office releases reuse immutable signed archives.
-- Store snapshots per user; read old shared caches only for migration. Cache account sorting and remove unused quota sanitizers, widget descriptors, and obsolete widget instructions.
-- Keep development builds in DerivedData instead of overwriting the installed signed app.
-- Add regression coverage for Bridge transport/conversion, ASAR patcher, Keychain failure, quota parsing, cache migration, and account availability.
-
-### Known issue / release gate
-
-- Phone Remote Control still reports **Lost connection to the remote instance** when switching conversations. The local proxy tests pass, but the user's phone retest failed. This is not claimed fixed.
-- Antigravity auto-patching ensures compatibility with standard official builds across updates; major architectural redesigns by Google may require future bridge maintenance. See `docs/audit-1.6.0.md`.
+- Allow HTTP endpoints (e.g. `http://ai.local`, `http://local.ai`, or custom LAN IP addresses) for router providers and Antigravity bridge without forcing HTTPS.
+- Completely removed the redundant "Provider type" picker from Provider Editor to simplify configuration; auto-detection and 9Router features now work seamlessly on all configured providers.
+- Added bridge provider fallback to the first enabled provider if none is explicitly tagged as 9Router, ensuring Antigravity Bridge activates automatically with any configured provider.
+- Enabled manual account routing and credential importing for any non-OmniRouter provider.
 
 ]]></description>
-            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.6.0/Bigroute-1.6.0.zip" length="3495714" type="application/octet-stream" sparkle:edSignature="YNtXWS8b4bzYews0TRUO1JkbMHXm2GVJMMZFZ2tmGnX+IKJhy91b/gJahHRE/OMUxobcMzKXiuRaHeAL/+qeCQ=="/>
+            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.6.1/Bigroute-1.6.1.zip" length="3401368" type="application/octet-stream" sparkle:edSignature="dHNi5u4k08I2f2tBl3cp/FFlwKO4ADBuFWAojVQ6TI53XtPUVgP2hp7Kx0VV+KzYuVy6PqvrF9UzzgK2fqE7CQ=="></enclosure>
         </item>
     </channel>
-</rss>
-<!-- sparkle-signatures:
-edSignature: 0UlE6NebYJZ1KJqDeBHEbg9s44ImFhPf+YY7uY85spVk8v2pCskBTbGkiOvQMp6180oYE1usCfPdoX0ISg6aAQ==
-length: 4081
+</rss><!-- sparkle-signatures:
+edSignature: UmG/6ONfv1g4kZ50+Ct+K4S48aaILCDr7Qs145nHy6hYGipkSyoWaRtmUjEArRZhoCWdgVMy9/HmIYaAGRerCg==
+length: 1968
 -->
