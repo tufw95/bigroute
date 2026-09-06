@@ -4,36 +4,30 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Bigroute</title>
         <item>
-            <title>1.7.0</title>
-            <pubDate>Sun, 06 Sep 2026 04:23:54 +0000</pubDate>
+            <title>1.7.4</title>
+            <pubDate>Sun, 06 Sep 2026 06:04:16 +0000</pubDate>
             <link>https://github.com/tufw95/bigroute</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.0</sparkle:fullReleaseNotesLink>
-            <sparkle:version>1007000</sparkle:version>
-            <sparkle:shortVersionString>1.7.0</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.4</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1007004</sparkle:version>
+            <sparkle:shortVersionString>1.7.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description sparkle:format="markdown"><![CDATA[
-### Added
+### Fixed
 
-- Native 100% compatibility with CLI Proxy API (`http://ai.local` / CLIProxyAPI v7.2+):
-  - Direct account & quota discovery via `GET /v0/management/auth-files` with management secret key authentication (`Authorization: Bearer <key>`).
-  - Native account status toggling via `PATCH /v0/management/auth-files/status` (`{"name": "...", "disabled": true/false}`).
-  - Account credential importing directly into CLI Proxy API via multipart `POST /v0/management/auth-files`.
-  - Native model routing in Antigravity Bridge proxy forwarding standard model names (`gemini-3.8-flash-high`, `claude-sonnet-4-6`, `gpt-5.5`, `gpt-5.6-sol`) without legacy prefixes.
-
-### Removed
-
-- Completely removed all legacy 9Router dependencies, endpoints, routing actions, and branding throughout the app.
-- Retired legacy 9Router model prefixes (`ag/`, `cx/`) in favor of native model IDs.
-
-### Changed
-
-- Updated Dashboard and Settings UI: streamlined Provider Editor with CLI Proxy API placeholders, modernized account action buttons to "Enable All" and "Disable Inactive", and updated Antigravity Bridge section.
+- **Antigravity Quota Filtering**:
+  - Exclusively track **Gemini Models** quota buckets (5-hour session and weekly limits) from `retrieveUserQuotaSummary`.
+  - Completely ignore third-party models ("Claude and GPT models" group), ensuring session and weekly quota percentages and reset times match official Google Gemini allocations.
+  - Added primary endpoint querying against `daily-cloudcode-pa.googleapis.com` with automated fallback to `cloudcode-pa.googleapis.com`.
+- **Accurate Session & Weekly Quota Displays**:
+  - Corrected `sessionQuota` resolution to prevent proxy HTTP success/request counts from masquerading as session limits.
+  - Added full support for CLI Proxy API cached quota signals (`X-Codex-Primary-Used-Percent`, `X-Codex-Secondary-Used-Percent`, reset times, and plans).
+  - Robust numeric parsing for OpenAI Codex `wham/usage` usage windows (`primary_window`, `secondary_window`).
 
 ]]></description>
-            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.0/Bigroute-1.7.0.zip" length="3372227" type="application/octet-stream" sparkle:edSignature="JqiUC3SIDGjg3iT0zmIMGftOG7/F5E7+G8DKmIgoJM+HI1+V6UmB4Igm4yNpDG7xfeofXvJbPbdfSNOTuDAfBA=="></enclosure>
+            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.4/Bigroute-1.7.4.zip" length="3467980" type="application/octet-stream" sparkle:edSignature="U6dZlgh1YNUWxqC8xJQZCmSIsJuWxU5mHST39jN8zheiQlDycqSDokc8pykvF7t+bN2qW7OZRrlXAsDF4zAcAQ=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: HNWUlZlS6qQwsLPYh+mja4p2sgFfQO4E0JbabTZghWA3Z5q8/kVUwpL7oaWNALfY32DHSpG4mYewaaO9Jkv6CA==
-length: 2431
+edSignature: i8Wa+A0LMFQe0zaZY6OiGEreQYEqyYRAagfdtWbSfPwBsS8FjX5/NnH70fS1yPyzkghgnXq2tBhLRsST+A6LCA==
+length: 2246
 -->
