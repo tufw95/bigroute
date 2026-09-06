@@ -129,7 +129,7 @@ final class QuotaMonitor {
             }
             let bridge = configuration.antigravityBridge
             let manager = AntigravityBridgeManager.shared
-            try await manager.saveBridgeConfig(nineRouterUrl: provider.endpoint, apiKey: provider.apiKey, modelMode: bridge.modelMode, customModelsText: bridge.customModelsText)
+            try await manager.saveBridgeConfig(nineRouterUrl: provider.endpoint, apiKey: provider.effectiveManagementKey, modelMode: bridge.modelMode, customModelsText: bridge.customModelsText)
             try await manager.restoreBridgeForStartup()
             try await manager.validateAntigravityConnection()
             bridgeError = nil
@@ -218,7 +218,7 @@ final class QuotaMonitor {
             let provider = bridgeProvider
             let bridge = configuration.antigravityBridge
             let manager = AntigravityBridgeManager.shared
-            try await manager.setBridgeEnabled(enabled, nineRouterUrl: provider?.endpoint ?? "", apiKey: provider?.apiKey ?? "", modelMode: bridge.modelMode, customModelsText: bridge.customModelsText)
+            try await manager.setBridgeEnabled(enabled, nineRouterUrl: provider?.endpoint ?? "", apiKey: provider?.effectiveManagementKey ?? "", modelMode: bridge.modelMode, customModelsText: bridge.customModelsText)
             configuration.antigravityBridge.isEnabled = enabled
             // API keys do not change when toggling the bridge; skip Keychain IO.
             try credentialStore.save(configuration, previous: previous)

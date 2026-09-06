@@ -351,6 +351,23 @@ import Testing
     #expect(json["disabled"] as? Bool == true)
 }
 
+@Test func cliProxyAPIFetchesClientAPIKeys() async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [APIKeysURLProtocol.self]
+    let session = URLSession(configuration: configuration)
+    APIKeysURLProtocol.reset(response: Data(#"{"api-keys":["sk-key-1","sk-key-2"]}"#.utf8))
+    let cli = CLIProxyAPIService(session: session)
+    let endpoint = URL(string: "https://router.example.com/internal")!
+    let keys = try await cli.fetchAPIKeys(endpoint: endpoint, managementKey: "sec-key")
+
+    let requests = APIKeysURLProtocol.requestsSnapshot()
+    #expect(requests.count == 1)
+    #expect(requests[0].request.httpMethod == "GET")
+    #expect(requests[0].request.url?.path == "/internal/v0/management/api-keys")
+    #expect(requests[0].request.value(forHTTPHeaderField: "Authorization") == "Bearer sec-key")
+    #expect(keys == ["sk-key-1", "sk-key-2"])
+}
+
 @Test func cliProxyManualRoutingAppliesActionToTargetAccounts() async throws {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [CachedRoutingURLProtocol.self]
@@ -675,6 +692,52 @@ private final class LiveQuotaEnrichmentURLProtocol: URLProtocol {
         }
         return data.isEmpty ? nil : data
     }
+}
+
+private final class APIKeysURLProtocol: URLProtocol {
+    private struct CapturedRequest: Sendable {
+        let request: URLRequest
+        let body: Data?
+    }
+
+    nonisolated(unsafe) private static var requests: [CapturedRequest] = []
+    nonisolated(unsafe) private static var responseData = Data()
+    private static let lock = NSLock()
+
+    static func reset(response: Data) {
+        lock.withLock {
+            requests = []
+            responseData = response
+        }
+    }
+
+    static func requestsSnapshot() -> [(request: URLRequest, body: Data?)] {
+        lock.withLock { requests }
+            .map { (request: $0.request, body: $0.body) }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        var data = Data()
+        Self.lock.withLock {
+            Self.requests.append(CapturedRequest(request: request, body: nil))
+            data = Self.responseData
+        }
+
+        let response = HTTPURLResponse(
+            url: request.url ?? URL(string: "https://router.example.com")!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 
 private final class CachedRoutingURLProtocol: URLProtocol {

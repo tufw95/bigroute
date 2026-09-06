@@ -934,7 +934,7 @@ private struct ProviderEditorView: View {
                     Toggle("Enabled", isOn: $provider.isEnabled)
                 }
                 Section {
-                    Text("Base URL of your CLI Proxy API server (e.g. http://ai.local or http://192.168.0.39:8317). Bigroute uses the management API to inspect accounts and quota.")
+                    Text("Base URL of your CLI Proxy API server (e.g. http://ai.local or http://192.168.0.39:8317). Bigroute uses the Management Secret Key to inspect accounts, quota, and automatically auto-discover the client API key for the Antigravity bridge.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

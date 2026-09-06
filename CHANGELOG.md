@@ -4,6 +4,15 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-09-06
+
+### Added
+
+- Automatic Client API Key auto-discovery for Antigravity Bridge:
+  - Bigroute now automatically discovers and retrieves valid client API keys from CLIProxyAPI (`GET /v0/management/api-keys`) using the Management Secret Key.
+  - When Antigravity Bridge is enabled or synchronized, it writes the active client API key to `bridge_config.json`, allowing seamless generation requests (`/v1/chat/completions`) without requiring users to configure or copy/paste a separate client API key.
+  - Keeps provider settings clean and minimal with only the Management Secret Key needed.
+
 ## [1.7.1] - 2026-09-06
 
 ### Added

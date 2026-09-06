@@ -198,12 +198,22 @@ public actor AntigravityBridgeManager {
         apiKey: String,
         modelMode: AntigravityModelMode,
         customModelsText: String
-    ) throws {
+    ) async throws {
         try FileManager.default.createDirectory(at: geminiDir, withIntermediateDirectories: true)
         let safeURL = try RouterEndpoint.normalizedURL(from: nineRouterUrl)
-        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw BridgeError("Choose an enabled provider with an API key before enabling the bridge.")
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else {
+            throw BridgeError("Choose an enabled provider with a Management Secret Key or API key before enabling the bridge.")
         }
+
+        // Auto-discover client API key from CLIProxyAPI if the provided key is a management key
+        var effectiveAPIKey = trimmedKey
+        if let clientKeys = try? await CLIProxyAPIService().fetchAPIKeys(endpoint: safeURL, managementKey: trimmedKey),
+           let firstClientKey = clientKeys.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            Self.logger.info("Auto-discovered client API key from CLIProxyAPI for Antigravity bridge")
+            effectiveAPIKey = firstClientKey
+        }
+
         let parsedCustomModels = customModelsText
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -217,7 +227,7 @@ public actor AntigravityBridgeManager {
         let config: [String: Any] = [
             "cliProxyUrl": safeURL.absoluteString,
             "nineRouterUrl": safeURL.absoluteString,
-            "apiKey": apiKey,
+            "apiKey": effectiveAPIKey,
             "modelMode": modelMode.rawValue,
             "customModels": parsedCustomModels
         ]
@@ -419,7 +429,7 @@ public actor AntigravityBridgeManager {
         defer { isSwitching = false }
         if let startTask { _ = try? await startTask.value }
         if enabled {
-            try saveBridgeConfig(nineRouterUrl: nineRouterUrl, apiKey: apiKey, modelMode: modelMode, customModelsText: customModelsText)
+            try await saveBridgeConfig(nineRouterUrl: nineRouterUrl, apiKey: apiKey, modelMode: modelMode, customModelsText: customModelsText)
             _ = try? await patchAntigravityIfNeeded()
             try await startProxy()
         } else {

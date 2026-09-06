@@ -123,6 +123,10 @@ public final class CLIProxyAPIService: Sendable {
         normalize(endpoint: baseURL, path: "/v0/management/api-call")
     }
 
+    public static func apiKeysURL(from baseURL: URL) -> URL {
+        normalize(endpoint: baseURL, path: "/v0/management/api-keys")
+    }
+
     private static func normalize(endpoint: URL, path: String) -> URL {
         let baseString = endpoint.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         if baseString.hasSuffix(path) {
@@ -617,6 +621,44 @@ public final class CLIProxyAPIService: Sendable {
             }
         }
         return count
+    }
+
+    public func fetchAPIKeys(
+        endpoint: URL,
+        managementKey: String
+    ) async throws -> [String] {
+        let url = Self.apiKeysURL(from: endpoint)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let trimmedKey = managementKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedKey.isEmpty {
+            request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw CLIProxyAPIError.invalidResponse
+        }
+
+        switch http.statusCode {
+        case 200:
+            struct ResponseWrapper: Decodable {
+                let apiKeys: [String]?
+                enum CodingKeys: String, CodingKey {
+                    case apiKeys = "api-keys"
+                }
+            }
+            let decoded = try JSONDecoder().decode(ResponseWrapper.self, from: data)
+            return decoded.apiKeys?.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? []
+        case 401, 403:
+            throw CLIProxyAPIError.unauthorized
+        case 404:
+            return []
+        default:
+            throw CLIProxyAPIError.serverError(http.statusCode)
+        }
     }
 
     public func uploadAuthFile(
