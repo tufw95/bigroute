@@ -286,6 +286,34 @@ import Testing
     #expect(requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
 }
 
+@Test func cliProxyAPIEnrichesAccountsWithLiveSessionAndWeeklyQuota() async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [LiveQuotaEnrichmentURLProtocol.self]
+    let session = URLSession(configuration: configuration)
+
+    let authFilesJSON = """
+    {"files":[{"name":"antigravity-user@gmail.com.json","provider":"antigravity","auth_index":"ag-idx","email":"user@gmail.com","disabled":false,"status":"available"}]}
+    """
+    let agLiveQuotaJSON = """
+    {"status_code":200,"body":"{\\"groups\\":[{\\"displayName\\":\\"Gemini Models\\",\\"buckets\\":[{\\"window\\":\\"weekly\\",\\"remainingFraction\\":0.75,\\"resetTime\\":\\"2026-09-13T00:00:00Z\\"},{\\"window\\":\\"5h\\",\\"remainingFraction\\":0.90,\\"resetTime\\":\\"2026-09-06T12:00:00Z\\"}]}]}"}
+    """
+    LiveQuotaEnrichmentURLProtocol.reset(responses: [
+        Data(authFilesJSON.utf8),
+        Data(agLiveQuotaJSON.utf8)
+    ])
+
+    let cli = CLIProxyAPIService(session: session)
+    let endpoint = URL(string: "https://router.example.com")!
+    let accounts = try await cli.fetchAccounts(endpoint: endpoint, managementKey: "test-key")
+
+    #expect(accounts.count == 1)
+    let acc = accounts[0]
+    #expect(acc.sessionQuota?.remaining == 90.0)
+    #expect(acc.sessionQuota?.resetAt == "2026-09-06T12:00:00Z")
+    #expect(acc.weeklyQuota?.remaining == 75.0)
+    #expect(acc.weeklyQuota?.resetAt == "2026-09-13T00:00:00Z")
+}
+
 @Test func quotaServiceStopsAStalledRequestBeforeTheURLSessionTimeout() async {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [StalledQuotaURLProtocol.self]
@@ -514,6 +542,74 @@ private final class StalledQuotaURLProtocol: URLProtocol {
 }
 
 private final class PreviewRoutingURLProtocol: URLProtocol {
+    private struct CapturedRequest: Sendable {
+        let request: URLRequest
+        let body: Data?
+    }
+
+    nonisolated(unsafe) private static var requests: [CapturedRequest] = []
+    nonisolated(unsafe) private static var responses: [Data] = []
+    private static let lock = NSLock()
+
+    static func reset(responses: [Data]) {
+        lock.withLock {
+            requests = []
+            self.responses = responses
+        }
+    }
+
+    static func requestsSnapshot() -> [(request: URLRequest, body: Data?)] {
+        lock.withLock { requests }
+            .map { (request: $0.request, body: $0.body) }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        var responseData = Data()
+        Self.lock.withLock {
+            Self.requests.append(CapturedRequest(
+                request: request,
+                body: request.httpBody ?? requestBody(from: request.httpBodyStream)
+            ))
+            if !Self.responses.isEmpty {
+                responseData = Self.responses.removeFirst()
+            }
+        }
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+              ) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: responseData)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    private func requestBody(from stream: InputStream?) -> Data? {
+        guard let stream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data.isEmpty ? nil : data
+    }
+}
+
+private final class LiveQuotaEnrichmentURLProtocol: URLProtocol {
     private struct CapturedRequest: Sendable {
         let request: URLRequest
         let body: Data?

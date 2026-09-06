@@ -725,7 +725,7 @@ function createBridgeServer({ googleUpstream = GOOGLE_UPSTREAM, configProvider =
       target.pathname = parsed.pathname;
       target.search = parsed.search;
       if (parsed.pathname === '/health' && req.method === 'GET') {
-        sendJSON(res, 200, { status: 'ok', proxy: 'antigravity-cliproxy-bridge', version: '1.7.0', scriptHash: SCRIPT_HASH, pid: process.pid });
+        sendJSON(res, 200, { status: 'ok', proxy: 'antigravity-cliproxy-bridge', version: '1.7.1', scriptHash: SCRIPT_HASH, pid: process.pid });
         return;
       }
       // Only exact, known Cloud Code RPCs are translated. New paths, remote

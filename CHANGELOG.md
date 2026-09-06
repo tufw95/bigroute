@@ -4,6 +4,15 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-09-06
+
+### Added
+
+- Live Session and Weekly quota retrieval for Google Antigravity and OpenAI Codex accounts:
+  - Enriched CLIProxyAPI account discovery via `POST /v0/management/api-call` to query upstream provider limits (`cloudcode-pa.googleapis.com` for Google, `chatgpt.com/backend-api/wham/usage` for OpenAI).
+  - Exact Session (5-hour window) and Weekly (7-day window) percentage and reset timestamps displayed for each account.
+  - Multi-row Session & Weekly progress bar cards for both Google Antigravity and OpenAI Codex in macOS Menu Bar.
+
 ## [1.7.0] - 2026-09-06
 
 ### Added
