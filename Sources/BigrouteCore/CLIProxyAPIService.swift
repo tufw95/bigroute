@@ -42,6 +42,22 @@ public struct CLIProxyAuthFile: Codable, Sendable, Identifiable {
     public let accountType: String?
     public let authIndex: String?
     public let type: String?
+    public let quota: QuotaSnapshot?
+
+    public struct QuotaSnapshot: Codable, Sendable {
+        public let observedAt: String?
+        public let signals: [String: String]?
+
+        enum CodingKeys: String, CodingKey {
+            case observedAt = "observed_at"
+            case signals
+        }
+
+        public init(observedAt: String? = nil, signals: [String: String]? = nil) {
+            self.observedAt = observedAt
+            self.signals = signals
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case name, provider, disabled, status
@@ -53,6 +69,7 @@ public struct CLIProxyAuthFile: Codable, Sendable, Identifiable {
         case accountType = "account_type"
         case authIndex = "auth_index"
         case type
+        case quota
     }
 
     public init(
@@ -72,7 +89,8 @@ public struct CLIProxyAuthFile: Codable, Sendable, Identifiable {
         account: String? = nil,
         accountType: String? = nil,
         authIndex: String? = nil,
-        type: String? = nil
+        type: String? = nil,
+        quota: QuotaSnapshot? = nil
     ) {
         self.name = name
         self.provider = provider
@@ -91,6 +109,7 @@ public struct CLIProxyAuthFile: Codable, Sendable, Identifiable {
         self.accountType = accountType
         self.authIndex = authIndex
         self.type = type
+        self.quota = quota
     }
 }
 
@@ -197,33 +216,72 @@ public final class CLIProxyAPIService: Sendable {
         let projId = (project?.isEmpty == false) ? project! : "aicode-consumers"
         let dataString = "{\"project\":\"\(projId)\"}"
 
-        let payload = APICallPayload(
-            authIndex: authIndex,
-            method: "POST",
-            url: "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
-            header: [
-                "Authorization": "Bearer $TOKEN$",
-                "Content-Type": "application/json",
-                "User-Agent": "antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)"
-            ],
-            data: dataString
-        )
+        let candidateURLs = [
+            "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+            "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary",
+            "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+        ]
 
-        let resp = try await executeAPICall(endpoint: endpoint, managementKey: managementKey, payload: payload)
-        guard let statusCode = resp.statusCode else { return nil }
+        var validJson: [String: Any]?
+        var lastStatusCode: Int?
 
-        if statusCode == 401 || statusCode == 403 {
-            return (quotas: [], limitReached: true, status: "invalid", errorCode: "auth_required")
+        for targetURL in candidateURLs {
+            let payload = APICallPayload(
+                authIndex: authIndex,
+                method: "POST",
+                url: targetURL,
+                header: [
+                    "Authorization": "Bearer $TOKEN$",
+                    "Content-Type": "application/json",
+                    "User-Agent": "antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)"
+                ],
+                data: dataString
+            )
+
+            guard let resp = try? await executeAPICall(endpoint: endpoint, managementKey: managementKey, payload: payload),
+                  let statusCode = resp.statusCode else {
+                continue
+            }
+            lastStatusCode = statusCode
+
+            if statusCode == 401 || statusCode == 403 {
+                continue
+            }
+            if statusCode == 429 {
+                return (quotas: [], limitReached: true, status: "rate_limited", errorCode: "rate_limit")
+            }
+            if (200...299).contains(statusCode),
+               let body = resp.body,
+               let bodyData = body.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] {
+                validJson = json
+                break
+            }
         }
-        if statusCode == 429 {
-            return (quotas: [], limitReached: true, status: "rate_limited", errorCode: "rate_limit")
-        }
-        guard (200...299).contains(statusCode), let body = resp.body, let bodyData = body.data(using: .utf8) else {
+
+        if validJson == nil {
+            if lastStatusCode == 401 || lastStatusCode == 403 {
+                return (quotas: [], limitReached: true, status: "invalid", errorCode: "auth_required")
+            }
             return nil
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+        guard let json = validJson,
               let groups = json["groups"] as? [[String: Any]] else {
+            return nil
+        }
+
+        // Note: For Antigravity, ONLY take "Gemini Models", ignore "Claude and GPT models" (3p)
+        let geminiGroup = groups.first { group in
+            let dName = (group["displayName"] as? String)?.lowercased() ?? ""
+            return dName.contains("gemini")
+        } ?? groups.first { group in
+            let dName = (group["displayName"] as? String)?.lowercased() ?? ""
+            return !dName.contains("claude") && !dName.contains("gpt") && !dName.contains("3p")
+        } ?? groups.first
+
+        guard let targetGroup = geminiGroup,
+              let buckets = targetGroup["buckets"] as? [[String: Any]] else {
             return nil
         }
 
@@ -232,24 +290,26 @@ public final class CLIProxyAPIService: Sendable {
         var weeklyRemaining: Double?
         var weeklyReset: String?
 
-        for group in groups {
-            guard let buckets = group["buckets"] as? [[String: Any]] else { continue }
-            for bucket in buckets {
-                let win = (bucket["window"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-                guard let frac = bucket["remainingFraction"] as? Double else { continue }
-                let pct = min(100, max(0, frac * 100))
-                let rt = bucket["resetTime"] as? String
-                if ["5h", "five-hour", "five_hour"].contains(win) {
-                    if sessionRemaining == nil || pct < sessionRemaining! {
-                        sessionRemaining = pct
-                        sessionReset = rt
-                    }
-                } else if ["weekly", "week"].contains(win) {
-                    if weeklyRemaining == nil || pct < weeklyRemaining! {
-                        weeklyRemaining = pct
-                        weeklyReset = rt
-                    }
-                }
+        for bucket in buckets {
+            let win = (bucket["window"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+            let bucketName = ((bucket["displayName"] as? String) ?? (bucket["name"] as? String) ?? "").lowercased()
+
+            guard let rawNum = (bucket["remainingFraction"] as? NSNumber) ?? (bucket["remaining"] as? NSNumber) else {
+                continue
+            }
+            let rawVal = rawNum.doubleValue
+            let pct = rawVal <= 1.0 ? min(100, max(0, rawVal * 100)) : min(100, max(0, rawVal))
+            let rt = (bucket["resetTime"] as? String) ?? (bucket["reset_time"] as? String)
+
+            let is5h = win.contains("5h") || win.contains("five") || win.contains("5_hour") || win.contains("5-hour") || bucketName.contains("5h") || bucketName.contains("five")
+            let isWeekly = win.contains("week") || win.contains("7d") || bucketName.contains("week") || bucketName.contains("7d")
+
+            if is5h {
+                sessionRemaining = pct
+                sessionReset = rt
+            } else if isWeekly {
+                weeklyRemaining = pct
+                weeklyReset = rt
             }
         }
 
@@ -314,49 +374,60 @@ public final class CLIProxyAPIService: Sendable {
             return nil
         }
 
-        let rawPlan = json["plan_type"] as? String
+        let rawPlan = (json["plan_type"] as? String) ?? (json["plan"] as? String)
         let plan = rawPlan.map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
 
         var availableCredits = 0
         if let rc = json["rate_limit_reset_credits"] as? [String: Any],
-           let count = rc["available_count"] as? Int {
+           let count = (rc["available_count"] as? NSNumber)?.intValue {
             availableCredits = count
         }
 
-        let rateLimit = json["rate_limit"] as? [String: Any]
-        let explicitLimitReached = rateLimit?["limit_reached"] as? Bool ?? false
+        let rateLimit = (json["rate_limit"] as? [String: Any]) ?? (json["rateLimit"] as? [String: Any]) ?? json
+        let explicitLimitReached = rateLimit["limit_reached"] as? Bool ?? false
 
         var sessionWindow: CodexQuotaWindow?
         var weeklyWindow: CodexQuotaWindow?
 
-        let windowKeys = ["primary_window", "secondary_window"]
-        for wKey in windowKeys {
-            guard let w = rateLimit?[wKey] as? [String: Any] else { continue }
-            let usedPercent = (w["used_percent"] as? Double) ?? Double((w["used_percent"] as? Int) ?? 0)
-            let winSec = (w["limit_window_seconds"] as? Int) ?? 0
+        let windowKeys: [(key: String, isWeekly: Bool)] = [
+            ("primary_window", false),
+            ("primaryWindow", false),
+            ("secondary_window", true),
+            ("secondaryWindow", true)
+        ]
+
+        for entry in windowKeys {
+            guard let w = rateLimit[entry.key] as? [String: Any] else { continue }
+            let usedPercent = (w["used_percent"] as? NSNumber)?.doubleValue
+                ?? (w["used_percentage"] as? NSNumber)?.doubleValue
+                ?? (w["usedPercent"] as? NSNumber)?.doubleValue
+                ?? 0
+            let winSec = (w["limit_window_seconds"] as? NSNumber)?.intValue
+                ?? (w["limitWindowSeconds"] as? NSNumber)?.intValue
+                ?? 0
             let remaining = max(0, min(100, 100 - usedPercent))
 
             var resetAtStr: String?
-            if let resetAtSec = w["reset_at"] as? Double {
+            if let resetAtSec = (w["reset_at"] as? NSNumber)?.doubleValue {
                 let d = Date(timeIntervalSince1970: resetAtSec)
                 resetAtStr = ISO8601DateFormatter().string(from: d)
-            } else if let resetAtSec = w["reset_at"] as? Int {
-                let d = Date(timeIntervalSince1970: TimeInterval(resetAtSec))
-                resetAtStr = ISO8601DateFormatter().string(from: d)
+            } else if let resetStr = (w["reset_at"] as? String) ?? (w["resetAt"] as? String) {
+                resetAtStr = resetStr
             }
 
-            if winSec <= 86400 && winSec > 0 {
-                sessionWindow = CodexQuotaWindow(
-                    key: "session",
+            let isWeekly = winSec > 86400 || (winSec == 0 && entry.isWeekly)
+            if isWeekly {
+                weeklyWindow = CodexQuotaWindow(
+                    key: "weekly",
                     used: usedPercent,
                     total: 100,
                     remaining: remaining,
                     resetAt: resetAtStr,
                     unlimited: false
                 )
-            } else if winSec > 86400 {
-                weeklyWindow = CodexQuotaWindow(
-                    key: "weekly",
+            } else {
+                sessionWindow = CodexQuotaWindow(
+                    key: "session",
                     used: usedPercent,
                     total: 100,
                     remaining: remaining,
@@ -389,7 +460,14 @@ public final class CLIProxyAPIService: Sendable {
             (weeklyWindow.map { $0.remaining <= 0 } ?? false)
         let status = isExhausted ? "rate_limited" : "available"
 
-        return (quotas: windows, plan: plan, resetCredits: availableCredits, limitReached: isExhausted, status: status, errorCode: nil)
+        return (
+            quotas: windows,
+            plan: plan,
+            resetCredits: availableCredits,
+            limitReached: isExhausted,
+            status: status,
+            errorCode: nil
+        )
     }
 
     private func fetchClaudeLiveQuota(
@@ -711,13 +789,13 @@ public final class CLIProxyAPIService: Sendable {
             : inferProvider(from: file.name)
 
         let label = displayLabel(for: file)
-        let plan = inferPlan(for: file, provider: provider)
+        var plan = inferPlan(for: file, provider: provider)
         let isDisabled = file.disabled == true
         let rawStatus = file.status?.lowercased() ?? "available"
 
         let isRateLimited = rawStatus.contains("rate_limit") || rawStatus.contains("rate-limit")
         let isExpired = rawStatus.contains("expired")
-        let limitReached = isDisabled || isRateLimited || isExpired
+        var limitReached = isDisabled || isRateLimited || isExpired
 
         let accountStatus: String
         if isDisabled {
@@ -730,26 +808,69 @@ public final class CLIProxyAPIService: Sendable {
             accountStatus = "available"
         }
 
-        let success = Double(file.success ?? 0)
-        let failed = Double(file.failed ?? 0)
-        let totalRequests = success + failed
-        let remaining: Double
-        if isDisabled || isRateLimited || isExpired {
-            remaining = 0
-        } else if totalRequests > 0 {
-            remaining = max(0, min(100, (success / totalRequests) * 100))
-        } else {
-            remaining = 100
+        var windows: [CodexQuotaWindow] = []
+
+        if let signals = file.quota?.signals, !signals.isEmpty {
+            if let primaryUsed = signals["X-Codex-Primary-Used-Percent"].flatMap(Double.init) {
+                let rem = max(0, min(100, 100 - primaryUsed))
+                var resetAt: String?
+                if let resetSec = signals["X-Codex-Primary-Reset-After"].flatMap(Double.init) {
+                    resetAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(resetSec))
+                }
+                windows.append(CodexQuotaWindow(
+                    key: "session",
+                    used: primaryUsed,
+                    total: 100,
+                    remaining: rem,
+                    resetAt: resetAt,
+                    unlimited: false
+                ))
+            }
+            if let secondaryUsed = signals["X-Codex-Secondary-Used-Percent"].flatMap(Double.init) {
+                let rem = max(0, min(100, 100 - secondaryUsed))
+                var resetAt: String?
+                if let resetSec = signals["X-Codex-Secondary-Reset-After"].flatMap(Double.init) {
+                    resetAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(resetSec))
+                }
+                windows.append(CodexQuotaWindow(
+                    key: "weekly",
+                    used: secondaryUsed,
+                    total: 100,
+                    remaining: rem,
+                    resetAt: resetAt,
+                    unlimited: false
+                ))
+            }
+            if let planSignal = signals["X-Codex-Plan-Type"], !planSignal.isEmpty {
+                plan = planSignal.prefix(1).uppercased() + planSignal.dropFirst().lowercased()
+            }
+            if signals["X-Codex-Limit-Reached"] == "true" {
+                limitReached = true
+            }
         }
 
-        let quota = CodexQuotaWindow(
-            key: "requests",
-            used: failed,
-            total: totalRequests > 0 ? totalRequests : 100,
-            remaining: remaining,
-            resetAt: nil,
-            unlimited: false
-        )
+        if windows.isEmpty {
+            let success = Double(file.success ?? 0)
+            let failed = Double(file.failed ?? 0)
+            let totalRequests = success + failed
+            let remaining: Double
+            if isDisabled || isRateLimited || isExpired {
+                remaining = 0
+            } else if totalRequests > 0 {
+                remaining = max(0, min(100, (success / totalRequests) * 100))
+            } else {
+                remaining = 100
+            }
+
+            windows = [CodexQuotaWindow(
+                key: "requests",
+                used: failed,
+                total: totalRequests > 0 ? totalRequests : 100,
+                remaining: remaining,
+                resetAt: nil,
+                unlimited: false
+            )]
+        }
 
         return CodexQuotaAccount(
             id: file.name,
@@ -757,7 +878,7 @@ public final class CLIProxyAPIService: Sendable {
             label: label,
             plan: plan,
             limitReached: limitReached,
-            quotas: [quota],
+            quotas: windows,
             resetCredits: CodexQuotaAccount.ResetCredits(availableCount: 0),
             status: accountStatus,
             errorCode: file.statusMessage,

@@ -282,7 +282,7 @@ public struct CodexQuotaAccount: Codable, Equatable, Identifiable, Sendable {
     }
 
     public var sessionQuota: CodexQuotaWindow? {
-        quotas.first(where: { $0.key == "session" }) ?? quotas.first
+        quotas.first(where: { $0.key == "session" }) ?? quotas.first(where: { $0.key != "requests" && $0.key != "weekly" })
     }
 
     public var weeklyQuota: CodexQuotaWindow? {

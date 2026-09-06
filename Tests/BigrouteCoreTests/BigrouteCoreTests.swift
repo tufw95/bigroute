@@ -314,6 +314,89 @@ import Testing
     #expect(acc.weeklyQuota?.resetAt == "2026-09-13T00:00:00Z")
 }
 
+@Test func cliProxyAPIIgnoresClaudeAndGPTModelsAndUsesGeminiOnly() async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [GeminiOnlyEnrichmentURLProtocol.self]
+    let session = URLSession(configuration: configuration)
+
+    let authFilesJSON = """
+    {"files":[{"name":"antigravity-dev@gmail.com.json","provider":"antigravity","auth_index":"ag-idx-2","email":"dev@gmail.com","disabled":false,"status":"available"}]}
+    """
+    // Google returns Gemini Models alongside 3p models ("Claude and GPT models")
+    let agLiveQuotaJSON = """
+    {"status_code":200,"body":"{\\"groups\\":[{\\"displayName\\":\\"Gemini Models\\",\\"buckets\\":[{\\"window\\":\\"weekly\\",\\"remainingFraction\\":0.672,\\"resetTime\\":\\"2026-09-10T18:33:40Z\\"},{\\"window\\":\\"5h\\",\\"remainingFraction\\":0.5718,\\"resetTime\\":\\"2026-09-06T05:50:46Z\\"}]},{\\"displayName\\":\\"Claude and GPT models\\",\\"buckets\\":[{\\"window\\":\\"weekly\\",\\"remainingFraction\\":0.9998,\\"resetTime\\":\\"2026-09-13T00:00:00Z\\"},{\\"window\\":\\"5h\\",\\"remainingFraction\\":0.9995,\\"resetTime\\":\\"2026-09-06T08:00:00Z\\"}]}]}"}
+    """
+    GeminiOnlyEnrichmentURLProtocol.reset(responses: [
+        Data(authFilesJSON.utf8),
+        Data(agLiveQuotaJSON.utf8)
+    ])
+
+    let cli = CLIProxyAPIService(session: session)
+    let endpoint = URL(string: "https://router.example.com")!
+    let accounts = try await cli.fetchAccounts(endpoint: endpoint, managementKey: "test-key")
+
+    #expect(accounts.count == 1)
+    let acc = accounts[0]
+    // Must strictly pick Gemini Models (57.18% and 67.2%), NEVER Claude and GPT models (99.95%)
+    let sessionRem = try #require(acc.sessionQuota?.remaining)
+    #expect(abs(sessionRem - 57.18) < 0.01)
+    #expect(acc.sessionQuota?.resetAt == "2026-09-06T05:50:46Z")
+
+    let weeklyRem = try #require(acc.weeklyQuota?.remaining)
+    #expect(abs(weeklyRem - 67.2) < 0.01)
+    #expect(acc.weeklyQuota?.resetAt == "2026-09-10T18:33:40Z")
+}
+
+@Test func cliProxyAPIPopulatesCodexLiveUsageWindows() async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [CodexLiveEnrichmentURLProtocol.self]
+    let session = URLSession(configuration: configuration)
+
+    let authFilesJSON = """
+    {"files":[{"name":"codex-team.json","provider":"codex","auth_index":"codex-idx","email":"user@work.com","disabled":false,"status":"available"}]}
+    """
+    let codexLiveQuotaJSON = """
+    {"status_code":200,"body":"{\\"plan_type\\":\\"team\\",\\"rate_limit\\":{\\"limit_reached\\":false,\\"primary_window\\":{\\"used_percent\\":42,\\"limit_window_seconds\\":18000,\\"reset_at\\":1725612345},\\"secondary_window\\":{\\"used_percent\\":18,\\"limit_window_seconds\\":604800,\\"reset_at\\":1726217145}}}"}
+    """
+    CodexLiveEnrichmentURLProtocol.reset(responses: [
+        Data(authFilesJSON.utf8),
+        Data(codexLiveQuotaJSON.utf8)
+    ])
+
+    let cli = CLIProxyAPIService(session: session)
+    let endpoint = URL(string: "https://router.example.com")!
+    let accounts = try await cli.fetchAccounts(endpoint: endpoint, managementKey: "test-key")
+
+    #expect(accounts.count == 1)
+    let acc = accounts[0]
+    #expect(acc.plan == "Team")
+    #expect(acc.sessionQuota?.remaining == 58.0)
+    #expect(acc.sessionQuota?.used == 42.0)
+    #expect(acc.weeklyQuota?.remaining == 82.0)
+    #expect(acc.weeklyQuota?.used == 18.0)
+}
+
+@Test func cliProxyAPIFallbackSignalsInAuthFile() throws {
+    let file = CLIProxyAuthFile(
+        name: "codex-pro.json",
+        provider: "codex",
+        disabled: false,
+        status: "available",
+        quota: .init(
+            observedAt: "2026-09-06T12:00:00Z",
+            signals: [
+                "X-Codex-Primary-Used-Percent": "35",
+                "X-Codex-Secondary-Used-Percent": "15",
+                "X-Codex-Plan-Type": "pro"
+            ]
+        )
+    )
+    let account = CLIProxyAPIService.mapToAccount(file)
+    #expect(account.plan == "Pro")
+    #expect(account.sessionQuota?.remaining == 65.0)
+    #expect(account.weeklyQuota?.remaining == 85.0)
+}
+
 @Test func quotaServiceStopsAStalledRequestBeforeTheURLSessionTimeout() async {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [StalledQuotaURLProtocol.self]
@@ -646,6 +729,132 @@ private final class LiveQuotaEnrichmentURLProtocol: URLProtocol {
     static func requestsSnapshot() -> [(request: URLRequest, body: Data?)] {
         lock.withLock { requests }
             .map { (request: $0.request, body: $0.body) }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        var responseData = Data()
+        Self.lock.withLock {
+            Self.requests.append(CapturedRequest(
+                request: request,
+                body: request.httpBody ?? requestBody(from: request.httpBodyStream)
+            ))
+            if !Self.responses.isEmpty {
+                responseData = Self.responses.removeFirst()
+            }
+        }
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+              ) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: responseData)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    private func requestBody(from stream: InputStream?) -> Data? {
+        guard let stream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data.isEmpty ? nil : data
+    }
+}
+
+private final class GeminiOnlyEnrichmentURLProtocol: URLProtocol {
+    private struct CapturedRequest: Sendable {
+        let request: URLRequest
+        let body: Data?
+    }
+
+    nonisolated(unsafe) private static var requests: [CapturedRequest] = []
+    nonisolated(unsafe) private static var responses: [Data] = []
+    private static let lock = NSLock()
+
+    static func reset(responses: [Data]) {
+        lock.withLock {
+            requests = []
+            self.responses = responses
+        }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        var responseData = Data()
+        Self.lock.withLock {
+            Self.requests.append(CapturedRequest(
+                request: request,
+                body: request.httpBody ?? requestBody(from: request.httpBodyStream)
+            ))
+            if !Self.responses.isEmpty {
+                responseData = Self.responses.removeFirst()
+            }
+        }
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+              ) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: responseData)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    private func requestBody(from stream: InputStream?) -> Data? {
+        guard let stream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data.isEmpty ? nil : data
+    }
+}
+
+private final class CodexLiveEnrichmentURLProtocol: URLProtocol {
+    private struct CapturedRequest: Sendable {
+        let request: URLRequest
+        let body: Data?
+    }
+
+    nonisolated(unsafe) private static var requests: [CapturedRequest] = []
+    nonisolated(unsafe) private static var responses: [Data] = []
+    private static let lock = NSLock()
+
+    static func reset(responses: [Data]) {
+        lock.withLock {
+            requests = []
+            self.responses = responses
+        }
     }
 
     override class func canInit(with request: URLRequest) -> Bool { true }

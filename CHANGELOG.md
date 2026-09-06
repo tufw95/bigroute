@@ -4,6 +4,19 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.4] - 2026-09-06
+
+### Fixed
+
+- **Antigravity Quota Filtering**:
+  - Exclusively track **Gemini Models** quota buckets (5-hour session and weekly limits) from `retrieveUserQuotaSummary`.
+  - Completely ignore third-party models ("Claude and GPT models" group), ensuring session and weekly quota percentages and reset times match official Google Gemini allocations.
+  - Added primary endpoint querying against `daily-cloudcode-pa.googleapis.com` with automated fallback to `cloudcode-pa.googleapis.com`.
+- **Accurate Session & Weekly Quota Displays**:
+  - Corrected `sessionQuota` resolution to prevent proxy HTTP success/request counts from masquerading as session limits.
+  - Added full support for CLI Proxy API cached quota signals (`X-Codex-Primary-Used-Percent`, `X-Codex-Secondary-Used-Percent`, reset times, and plans).
+  - Robust numeric parsing for OpenAI Codex `wham/usage` usage windows (`primary_window`, `secondary_window`).
+
 ## [1.7.2] - 2026-09-06
 
 ### Added
