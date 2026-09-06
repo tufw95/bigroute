@@ -8,6 +8,7 @@
 
 import http from 'node:http';
 import https from 'node:https';
+import dns from 'node:dns';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -24,6 +25,63 @@ const CONFIG_PATH = path.join(os.homedir(), '.gemini', 'antigravity', 'bridge_co
 const LOG_PATH = process.env.AG_PROXY_LOG || path.join(path.dirname(CONFIG_PATH), 'bridge-proxy', 'bridge.log');
 const SCRIPT_HASH = createHash('sha256').update(fs.readFileSync(fileURLToPath(import.meta.url))).digest('hex');
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
+
+const dnsCache = new Map();
+
+function cachedLookup(hostname, options, callback) {
+  if (typeof options === 'function') {
+    callback = options;
+    options = {};
+  }
+  const cached = dnsCache.get(hostname);
+  if (cached && cached.expires > Date.now()) {
+    return process.nextTick(() => {
+      if (options.all) callback(null, cached.all);
+      else callback(null, cached.address, cached.family);
+    });
+  }
+  dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
+    if (err) return callback(err);
+    if (Array.isArray(addresses) && addresses.length > 0) {
+      dnsCache.set(hostname, {
+        address: addresses[0].address,
+        family: addresses[0].family,
+        all: addresses,
+        expires: Date.now() + 300_000
+      });
+      if (options.all) callback(null, addresses);
+      else callback(null, addresses[0].address, addresses[0].family);
+    } else {
+      callback(new Error(`Could not resolve ${hostname}`));
+    }
+  });
+}
+
+function warmDNS(rawURL) {
+  try {
+    if (!rawURL) return;
+    const host = new URL(rawURL).hostname;
+    if (host && !dnsCache.has(host)) {
+      cachedLookup(host, () => {});
+    }
+  } catch (_) {}
+}
+
+const defaultHttpAgent = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30_000,
+  maxSockets: 64,
+  timeout: 0,
+  lookup: cachedLookup
+});
+
+const defaultHttpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30_000,
+  maxSockets: 64,
+  timeout: 0,
+  lookup: cachedLookup
+});
 
 function log(...args) {
   const line = `[${new Date().toISOString()}] ${args.map(value => {
@@ -42,6 +100,7 @@ function loadConfig() {
       const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
       const cliProxyUrl = typeof parsed.cliProxyUrl === 'string' ? parsed.cliProxyUrl
         : (typeof parsed.nineRouterUrl === 'string' ? parsed.nineRouterUrl : '');
+      warmDNS(cliProxyUrl);
       return {
         cliProxyUrl,
         nineRouterUrl: cliProxyUrl,
@@ -51,7 +110,7 @@ function loadConfig() {
       };
     }
   } catch (error) {
-    log('Could not read bridge config:', error.code || error.name);
+    log('Could not read bridge config:', error.message || error.code || error.name);
   }
   return { cliProxyUrl: '', nineRouterUrl: '', apiKey: '', modelMode: 'keep_official', customModels: [] };
 }
@@ -65,9 +124,28 @@ function normalizeCloudCodeURL(requestURL) {
   return `${pathname || '/'}${parsed.search}`;
 }
 
+const OFFICIAL_FALLBACK_MAP = {
+  'gemini-2.5-flash': 'gemini-3-flash',
+  'gemini-2.0-flash': 'gemini-3-flash',
+  'gemini-2.0-flash-exp': 'gemini-3-flash',
+  'gemini-1.5-flash': 'gemini-3-flash',
+  'gemini-2.5-pro': 'gemini-3.1-pro-low',
+  'gemini-2.0-pro-exp': 'gemini-3.1-pro-low',
+  'gemini-1.5-pro': 'gemini-3.1-pro-low',
+  'gemini-exp-1206': 'gemini-3.1-pro-low',
+  'claude-3-5-sonnet': 'claude-sonnet-4-6',
+  'claude-3-7-sonnet': 'claude-sonnet-4-6',
+  'claude-3-opus': 'claude-opus-4-6-thinking',
+  'gpt-4o': 'gpt-5.5',
+  'gpt-4o-mini': 'gpt-5.3-codex-spark'
+};
+
 function mapModelToCLIProxy(model) {
   if (!model) throw new Error('The generation request does not specify a model.');
-  return model.replace(/^models\//, '');
+  const cleaned = model.replace(/^models\//, '');
+  if (OFFICIAL_FALLBACK_MAP[cleaned]) return OFFICIAL_FALLBACK_MAP[cleaned];
+  if (/^MODEL_PLACEHOLDER_M\d+$/.test(cleaned)) return 'gemini-3-flash';
+  return cleaned;
 }
 
 function mapModelTo9Router(model) {
@@ -469,8 +547,10 @@ function relayResponseHeaders(input) {
 // Tie each upstream to its own downstream response. A completed request body
 // does not mean the client has finished reading (or canceled) its response.
 function attachUpstream(req, res, target, options, idleTimeoutMs) {
-  const client = target.protocol === 'https:' ? https : http;
-  const upstream = client.request(target, options);
+  const isHttps = target.protocol === 'https:';
+  const client = isHttps ? https : http;
+  const agent = options.agent || (isHttps ? defaultHttpsAgent : defaultHttpAgent);
+  const upstream = client.request(target, { agent, ...options });
   const cancel = () => upstream.destroy();
   req.once('aborted', cancel);
   res.once('close', cancel);
@@ -697,8 +777,12 @@ async function routeGeneration(req, res, config, stream, idleTimeoutMs) {
   try {
     const response = await responsePromise;
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      res.writeHead(response.statusCode || 502, relayResponseHeaders(response.headers));
-      await pipeline(response, res);
+      const errBody = await readBounded(response).catch(() => Buffer.from(''));
+      log(`CLI Proxy API upstream returned HTTP ${response.statusCode}:`, errBody.toString('utf8'));
+      const responseHeaders = relayResponseHeaders(response.headers);
+      responseHeaders['content-length'] = errBody.length;
+      res.writeHead(response.statusCode || 502, responseHeaders);
+      res.end(errBody);
     } else if (stream && response.headers['content-type']?.includes('text/event-stream')) {
       await translateOpenAIStream(response, res);
     } else {
@@ -751,7 +835,7 @@ function createBridgeServer({ googleUpstream = GOOGLE_UPSTREAM, configProvider =
       // Never turn a truncated reply into a successful response, or leave the
       // client waiting forever after response headers have been sent.
       if (!res.destroyed) {
-        log('Request failed:', error.code || error.name);
+        log(`Request ${req.method} ${req.url} failed:`, error.message || error.code || error.name, error.stack);
         if (res.headersSent) res.destroy();
         else sendJSON(res, 502, { error: { message: 'Bridge upstream request failed. Please retry.' } });
       }
