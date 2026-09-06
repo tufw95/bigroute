@@ -4,26 +4,36 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Bigroute</title>
         <item>
-            <title>1.6.1</title>
-            <pubDate>Sun, 06 Sep 2026 03:58:32 +0000</pubDate>
+            <title>1.7.0</title>
+            <pubDate>Sun, 06 Sep 2026 04:23:54 +0000</pubDate>
             <link>https://github.com/tufw95/bigroute</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.6.1</sparkle:fullReleaseNotesLink>
-            <sparkle:version>1006001</sparkle:version>
-            <sparkle:shortVersionString>1.6.1</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.0</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1007000</sparkle:version>
+            <sparkle:shortVersionString>1.7.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description sparkle:format="markdown"><![CDATA[
-### Fixed
+### Added
 
-- Allow HTTP endpoints (e.g. `http://ai.local`, `http://local.ai`, or custom LAN IP addresses) for router providers and Antigravity bridge without forcing HTTPS.
-- Completely removed the redundant "Provider type" picker from Provider Editor to simplify configuration; auto-detection and 9Router features now work seamlessly on all configured providers.
-- Added bridge provider fallback to the first enabled provider if none is explicitly tagged as 9Router, ensuring Antigravity Bridge activates automatically with any configured provider.
-- Enabled manual account routing and credential importing for any non-OmniRouter provider.
+- Native 100% compatibility with CLI Proxy API (`http://ai.local` / CLIProxyAPI v7.2+):
+  - Direct account & quota discovery via `GET /v0/management/auth-files` with management secret key authentication (`Authorization: Bearer <key>`).
+  - Native account status toggling via `PATCH /v0/management/auth-files/status` (`{"name": "...", "disabled": true/false}`).
+  - Account credential importing directly into CLI Proxy API via multipart `POST /v0/management/auth-files`.
+  - Native model routing in Antigravity Bridge proxy forwarding standard model names (`gemini-3.8-flash-high`, `claude-sonnet-4-6`, `gpt-5.5`, `gpt-5.6-sol`) without legacy prefixes.
+
+### Removed
+
+- Completely removed all legacy 9Router dependencies, endpoints, routing actions, and branding throughout the app.
+- Retired legacy 9Router model prefixes (`ag/`, `cx/`) in favor of native model IDs.
+
+### Changed
+
+- Updated Dashboard and Settings UI: streamlined Provider Editor with CLI Proxy API placeholders, modernized account action buttons to "Enable All" and "Disable Inactive", and updated Antigravity Bridge section.
 
 ]]></description>
-            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.6.1/Bigroute-1.6.1.zip" length="3401368" type="application/octet-stream" sparkle:edSignature="dHNi5u4k08I2f2tBl3cp/FFlwKO4ADBuFWAojVQ6TI53XtPUVgP2hp7Kx0VV+KzYuVy6PqvrF9UzzgK2fqE7CQ=="></enclosure>
+            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.0/Bigroute-1.7.0.zip" length="3372227" type="application/octet-stream" sparkle:edSignature="JqiUC3SIDGjg3iT0zmIMGftOG7/F5E7+G8DKmIgoJM+HI1+V6UmB4Igm4yNpDG7xfeofXvJbPbdfSNOTuDAfBA=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: UmG/6ONfv1g4kZ50+Ct+K4S48aaILCDr7Qs145nHy6hYGipkSyoWaRtmUjEArRZhoCWdgVMy9/HmIYaAGRerCg==
-length: 1968
+edSignature: HNWUlZlS6qQwsLPYh+mja4p2sgFfQO4E0JbabTZghWA3Z5q8/kVUwpL7oaWNALfY32DHSpG4mYewaaO9Jkv6CA==
+length: 2431
 -->
