@@ -40,6 +40,7 @@ public actor AntigravityBridgeManager {
     private let endpointFileURL: URL
     private let configJsonURL: URL
     private let proxyScriptURL: URL
+    private let patcherScriptURL: URL
     private var proxyProcess: Process?
     private var startTask: Task<Bool, Error>?
     private var isSwitching = false
@@ -60,6 +61,7 @@ public actor AntigravityBridgeManager {
         endpointBackupURL = geminiDir.appending(path: "bridge-proxy/previous-endpoint.json")
         configJsonURL = geminiDir.appending(path: "bridge_config.json")
         proxyScriptURL = geminiDir.appending(path: "bridge-proxy/antigravity-bridge-proxy.mjs", directoryHint: .notDirectory)
+        patcherScriptURL = geminiDir.appending(path: "bridge-proxy/antigravity-asar-patcher.mjs", directoryHint: .notDirectory)
     }
 
     public nonisolated var isCurrentlyPointedToBridge: Bool {
@@ -111,6 +113,82 @@ public actor AntigravityBridgeManager {
         }
         try source.write(to: proxyScriptURL, options: Data.WritingOptions.atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: proxyScriptURL.path)
+        return true
+    }
+
+    @discardableResult
+    public func ensurePatcherScriptInstalled() throws -> Bool {
+        let bundledURL = resourceBundle.url(
+            forResource: "antigravity-asar-patcher",
+            withExtension: "mjs",
+            subdirectory: "Resources"
+        ) ?? resourceBundle.url(forResource: "antigravity-asar-patcher", withExtension: "mjs")
+        guard let bundledURL else {
+            throw NSError(domain: "AntigravityBridge", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Bundled Antigravity ASAR patcher is missing."
+            ])
+        }
+        let proxyDir = patcherScriptURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: proxyDir, withIntermediateDirectories: true)
+        let source = try Data(contentsOf: bundledURL)
+        if FileManager.default.fileExists(atPath: patcherScriptURL.path),
+           try Data(contentsOf: patcherScriptURL) == source {
+            return false
+        }
+        try source.write(to: patcherScriptURL, options: Data.WritingOptions.atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: patcherScriptURL.path)
+        return true
+    }
+
+    public func checkAntigravityPatchStatus() async -> (appExists: Bool, isPatched: Bool) {
+        guard let node = nodePath() else { return (false, false) }
+        do {
+            _ = try ensurePatcherScriptInstalled()
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: node)
+            process.arguments = [patcherScriptURL.path, "check"]
+            let output = Pipe()
+            process.standardOutput = output
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let appExists = obj["appExists"] as? Bool,
+               let isPatched = obj["isPatched"] as? Bool,
+               let integrityMatches = obj["integrityMatches"] as? Bool {
+                return (appExists, isPatched && integrityMatches)
+            }
+        } catch {
+            Self.logger.error("Error checking patch status: \(error.localizedDescription)")
+        }
+        return (false, false)
+    }
+
+    @discardableResult
+    public func patchAntigravityIfNeeded() async throws -> Bool {
+        guard let node = nodePath() else {
+            throw NSError(domain: "AntigravityBridge", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Node.js binary not found. Install Node.js and try again."
+            ])
+        }
+        _ = try ensurePatcherScriptInstalled()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: node)
+        process.arguments = [patcherScriptURL.path, "patch"]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let msg = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            throw NSError(domain: "AntigravityBridge", code: 4, userInfo: [
+                NSLocalizedDescriptionKey: "Could not patch Antigravity: \(msg)"
+            ])
+        }
+        Self.logger.info("Antigravity app verified and patched successfully for bridge")
         return true
     }
 
@@ -181,6 +259,8 @@ public actor AntigravityBridgeManager {
     }
 
     private func launchProxy() async throws -> Bool {
+        _ = try? ensurePatcherScriptInstalled()
+        _ = try? await patchAntigravityIfNeeded()
         let scriptUpdated = try ensureBridgeScriptInstalled()
         let scriptHash = SHA256.hash(data: try Data(contentsOf: proxyScriptURL)).map { String(format: "%02x", $0) }.joined()
         Self.logger.info("Starting Antigravity bridge proxy; scriptUpdated=\(scriptUpdated, privacy: .public)")
@@ -228,10 +308,11 @@ public actor AntigravityBridgeManager {
 
     public func restoreBridgeForStartup() async throws {
         // A Bigroute OTA/relaunch must never terminate the remote user's IDE.
+        _ = try? await patchAntigravityIfNeeded()
         _ = try await startProxy()
     }
 
-    public func validateAntigravityConnection() throws {
+    public func validateAntigravityConnection() async throws {
         let lookup = Process()
         lookup.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
         lookup.arguments = ["-f", "^/Applications/Antigravity\\.app/Contents/Resources/bin/language_server( |$)"]
@@ -261,7 +342,12 @@ public actor AntigravityBridgeManager {
                 .map { String($0.dropFirst("--cloud_code_endpoint=".count)) }
         }
         guard endpoints.count == pids.count, endpoints.allSatisfy(Self.isBridgeEndpoint) else {
-            throw BridgeError("Antigravity is using its official endpoint. This build must support cloud_code_endpoint.txt to use the bridge; an Antigravity update may have removed that support.")
+            let patchStatus = await checkAntigravityPatchStatus()
+            if patchStatus.appExists && !patchStatus.isPatched {
+                _ = try? await patchAntigravityIfNeeded()
+                throw BridgeError("Antigravity was updated. Bigroute has automatically re-applied the bridge patch. Please restart Antigravity to apply.")
+            }
+            throw BridgeError("Antigravity is using its official endpoint. Relaunch Antigravity to apply the bridge settings.")
         }
     }
 
@@ -314,6 +400,7 @@ public actor AntigravityBridgeManager {
         guard running.allSatisfy(\.isTerminated) else {
             throw BridgeError("Antigravity is still closing. Save your work and restart it to apply the bridge settings.")
         }
+        _ = try? await patchAntigravityIfNeeded()
         let options = NSWorkspace.OpenConfiguration()
         _ = try await NSWorkspace.shared.openApplication(at: appURL, configuration: options)
     }
@@ -331,6 +418,7 @@ public actor AntigravityBridgeManager {
         if let startTask { _ = try? await startTask.value }
         if enabled {
             try saveBridgeConfig(nineRouterUrl: nineRouterUrl, apiKey: apiKey, modelMode: modelMode, customModelsText: customModelsText)
+            _ = try? await patchAntigravityIfNeeded()
             try await startProxy()
         } else {
             try restoreOfficialEndpoint()

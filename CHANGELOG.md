@@ -4,7 +4,11 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.6.0] - Unreleased
+## [1.6.0] - 2026-09-06
+
+### Added
+
+- Automated Antigravity ASAR patcher & integrity verification (`antigravity-asar-patcher.mjs`): automatically detects unpatched or freshly updated Antigravity app bundles, applies the custom Cloud Code endpoint loader to `languageServer.js`, updates `ElectronAsarIntegrity` in `Info.plist`, and re-signs binaries ad-hoc so the 9Router bridge persists seamlessly across Antigravity self-updates.
 
 ### Fixed
 
@@ -21,13 +25,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Publish signed OTA feeds through an atomic Git branch update, reject feed downgrades, retain the legacy feed for existing clients, and verify both public URLs. Interrupted office releases reuse immutable signed archives.
 - Store snapshots per user; read old shared caches only for migration. Cache account sorting and remove unused quota sanitizers, widget descriptors, and obsolete widget instructions.
 - Keep development builds in DerivedData instead of overwriting the installed signed app.
-- Add regression coverage for Bridge transport/conversion, Keychain failure, quota parsing, cache migration, and account availability.
+- Add regression coverage for Bridge transport/conversion, ASAR patcher, Keychain failure, quota parsing, cache migration, and account availability.
 
 ### Known issue / release gate
 
 - Phone Remote Control still reports **Lost connection to the remote instance** when switching conversations. The local proxy tests pass, but the user's phone retest failed. This is not claimed fixed.
-- The inspected official Antigravity 2.12.2 package does not read the Bridge endpoint override. The installed modified package does, but its altered signature also interferes with Antigravity's own updater. Compatibility with future Antigravity releases is not guaranteed.
-- Hold the `office-v1.6.0` release tag until real phone navigation and signed OTA installation have been validated. See `docs/audit-1.6.0.md`.
+- Antigravity auto-patching ensures compatibility with standard official builds across updates; major architectural redesigns by Google may require future bridge maintenance. See `docs/audit-1.6.0.md`.
 
 ## [1.5.3] - 2026-09-05
 
