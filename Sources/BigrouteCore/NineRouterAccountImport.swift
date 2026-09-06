@@ -306,7 +306,7 @@ public final class NineRouterAccountImportService: @unchecked Sendable {
         _ files: [NineRouterCredentialFile],
         provider: CustomQuotaProvider
     ) async throws -> NineRouterAccountImportResult {
-        guard provider.apiKind == .nineRouter else {
+        guard provider.apiKind != .omniRouter else {
             throw NineRouterAccountImportError.unsupportedProvider
         }
         guard !provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

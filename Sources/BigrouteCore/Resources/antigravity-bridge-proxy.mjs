@@ -390,8 +390,9 @@ function buildOpenAIPayload(body, config = loadConfig()) {
 function chatEndpoint(base) {
   const endpoint = new URL(base);
   if (!['https:', 'http:'].includes(endpoint.protocol)
-    || (endpoint.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname))
-    || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new Error('9Router requires HTTPS, or HTTP on localhost, without URL credentials or query parameters.');
+    || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+    throw new Error('9Router requires an HTTP or HTTPS endpoint without URL credentials or query parameters.');
+  }
   const pathname = endpoint.pathname.replace(/\/+$/, '').replace(/\/v1\/(quota|models)$/, '/v1');
   if (/\/chat\/completions$/.test(pathname)) return endpoint;
   endpoint.pathname = pathname.endsWith('/v1') || pathname.endsWith('/api/v1')

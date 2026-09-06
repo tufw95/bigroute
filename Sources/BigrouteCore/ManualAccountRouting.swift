@@ -172,7 +172,7 @@ public final class NineRouterManualRoutingService: @unchecked Sendable {
     }
 
     private func validate(_ provider: CustomQuotaProvider) throws {
-        guard provider.apiKind == .nineRouter else {
+        guard provider.apiKind != .omniRouter else {
             throw NineRouterManualRoutingError.unsupportedProvider
         }
         guard !provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

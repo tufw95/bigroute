@@ -112,7 +112,7 @@ final class QuotaMonitor {
     }
 
     private var bridgeProvider: CustomQuotaProvider? {
-        enabledProviders.first(where: { $0.apiKind == .nineRouter })
+        enabledProviders.first(where: { $0.apiKind == .nineRouter }) ?? enabledProviders.first
     }
 
     private func synchronizeBridgeConfiguration() async {
@@ -125,7 +125,7 @@ final class QuotaMonitor {
                 configuration.antigravityBridge.isEnabled = false
                 try credentialStore.save(configuration, previous: persistedConfiguration)
                 persistedConfiguration = configuration
-                throw ConfigurationError("Bridge disabled because no enabled 9Router provider is configured.")
+                throw ConfigurationError("Bridge disabled because no enabled provider is configured.")
             }
             let bridge = configuration.antigravityBridge
             let manager = AntigravityBridgeManager.shared
@@ -214,7 +214,7 @@ final class QuotaMonitor {
         isSwitchingAntigravityBridge = true
         defer { isSwitchingAntigravityBridge = false }
         do {
-            if enabled && bridgeProvider == nil { throw ConfigurationError("Enable a provider configured as 9Router before turning on the bridge.") }
+            if enabled && bridgeProvider == nil { throw ConfigurationError("Enable a provider before turning on the bridge.") }
             let provider = bridgeProvider
             let bridge = configuration.antigravityBridge
             let manager = AntigravityBridgeManager.shared

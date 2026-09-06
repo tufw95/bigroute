@@ -184,7 +184,7 @@ struct DashboardView: View {
     }
 
     private var supportsManualRouting: Bool {
-        currentProvider?.apiKind == .nineRouter
+        currentProvider?.apiKind != .omniRouter
     }
 
     private var manualRoutingBar: some View {
@@ -936,20 +936,12 @@ private struct ProviderEditorView: View {
             Form {
                 Section("Provider") {
                     TextField("Name", text: $provider.name, prompt: Text("My Router"))
-                    Picker("Provider type", selection: $provider.apiKind) {
-                        ForEach(QuotaAPIKind.allCases, id: \.self) { kind in
-                            Text(kind.displayName).tag(kind)
-                        }
-                    }
                     TextField("Endpoint", text: $provider.endpoint, prompt: Text("https://router.example.com"))
                     SecureField("API key", text: $provider.apiKey)
                     Toggle("Enabled", isOn: $provider.isEnabled)
                 }
                 Section {
                     Text("Endpoint can be a base URL or the complete /v1/quota or /api/usage/quota URL.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("Choose 9Router to enable the two manual account actions. Auto-detect and OmniRouter remain quota-monitoring only.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -969,7 +961,7 @@ private struct ProviderEditorView: View {
             }
             .padding(16)
         }
-        .frame(width: 480, height: 440)
+        .frame(width: 480, height: 350)
         .environment(monitor)
     }
 

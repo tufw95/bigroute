@@ -4,6 +4,15 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-09-06
+
+### Fixed
+
+- Allow HTTP endpoints (e.g. `http://ai.local`, `http://local.ai`, or custom LAN IP addresses) for router providers and Antigravity bridge without forcing HTTPS.
+- Completely removed the redundant "Provider type" picker from Provider Editor to simplify configuration; auto-detection and 9Router features now work seamlessly on all configured providers.
+- Added bridge provider fallback to the first enabled provider if none is explicitly tagged as 9Router, ensuring Antigravity Bridge activates automatically with any configured provider.
+- Enabled manual account routing and credential importing for any non-OmniRouter provider.
+
 ## [1.6.0] - 2026-09-06
 
 ### Added

@@ -37,9 +37,6 @@ public enum RouterEndpoint {
         guard scheme == "https" || scheme == "http" else {
             throw RouterEndpointError.unsupportedScheme
         }
-        if scheme == "http", !isLoopbackHost(host) {
-            throw RouterEndpointError.insecureRemoteURL
-        }
         guard components.user == nil, components.password == nil else {
             throw RouterEndpointError.embeddedCredentials
         }

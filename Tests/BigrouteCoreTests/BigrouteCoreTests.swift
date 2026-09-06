@@ -14,6 +14,30 @@ import Testing
     #expect(OmniQuotaService.providerLimitsURL(from: omniEndpoint).absoluteString == "https://router.example.com/api/usage/provider-limits")
 }
 
+@Test func routerEndpointAllowsHTTPAndNormalizesValidURLs() throws {
+    let httpLocal = try RouterEndpoint.normalizedURL(from: "http://ai.local")
+    #expect(httpLocal.absoluteString == "http://ai.local")
+
+    let httpPort = try RouterEndpoint.normalizedURL(from: "http://local.ai:8080/v1/")
+    #expect(httpPort.absoluteString == "http://local.ai:8080")
+
+    let httpSubpath = try RouterEndpoint.normalizedURL(from: "http://local.ai:8080/sub/v1")
+    #expect(httpSubpath.absoluteString == "http://local.ai:8080/sub")
+
+    let httpsRemote = try RouterEndpoint.normalizedURL(from: "https://router.example.com/")
+    #expect(httpsRemote.absoluteString == "https://router.example.com")
+
+    #expect(throws: RouterEndpointError.unsupportedScheme) {
+        try RouterEndpoint.normalizedURL(from: "ftp://router.example.com")
+    }
+    #expect(throws: RouterEndpointError.embeddedCredentials) {
+        try RouterEndpoint.normalizedURL(from: "http://user:pass@ai.local")
+    }
+    #expect(throws: RouterEndpointError.queryOrFragmentNotAllowed) {
+        try RouterEndpoint.normalizedURL(from: "http://ai.local?key=val")
+    }
+}
+
 @Test func omniParserReadsQuotaAndReset() throws {
     let json = Data(#"{"providers":[{"connectionId":"omni-1","provider":"omni","name":"Work","status":"valid","quota":{"percentRemaining":64,"resetAt":"2026-08-02T00:00:00Z"}}]}"#.utf8)
     let response = try OmniQuotaService.decodeResponse(json)

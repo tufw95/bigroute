@@ -292,7 +292,9 @@ test('unsupported media is explicit rather than silently discarded', () => {
 test('quota endpoints resolve to inference paths and credentials never go to insecure hosts', () => {
   assert.equal(chatEndpoint('https://router.example/base/v1/quota').pathname, '/base/v1/chat/completions');
   assert.equal(chatEndpoint('https://router.example/v1/chat/completions/').pathname, '/v1/chat/completions/');
-  for (const url of ['http://router.example', 'https://user:pass@router.example', 'https://router.example?key=value', 'file:///tmp/test']) assert.throws(() => chatEndpoint(url));
+  assert.equal(chatEndpoint('http://ai.local/v1/quota').pathname, '/v1/chat/completions');
+  assert.equal(chatEndpoint('http://router.example').pathname, '/v1/chat/completions');
+  for (const url of ['https://user:pass@router.example', 'https://router.example?key=value', 'file:///tmp/test', 'ftp://router.example']) assert.throws(() => chatEndpoint(url));
 });
 
 test('synchronous generation returns JSON instead of SSE', { timeout: 5000 }, async t => {
