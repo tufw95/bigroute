@@ -184,7 +184,7 @@ struct DashboardView: View {
     }
 
     private var supportsManualRouting: Bool {
-        currentProvider?.apiKind != .omniRouter
+        currentProvider?.isEnabled == true
     }
 
     private var manualRoutingBar: some View {
@@ -198,7 +198,7 @@ struct DashboardView: View {
                     Label(manualActionMessage, systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                 } else {
-                    Label("9Router account tools", systemImage: "hand.tap")
+                    Label("Account tools", systemImage: "hand.tap")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -218,17 +218,17 @@ struct DashboardView: View {
             } label: {
                 Label("Import JSON…", systemImage: "doc.badge.plus")
             }
-            .help("Import ChatGPT account JSON files into 9Router")
+            .help("Import account credential JSON files into CLI Proxy API")
             Button {
-                runManualAction(.turnOffEmpty)
+                runManualAction(.disableInactive)
             } label: {
-                Label("Turn Off Empty (0%)", systemImage: NineRouterAccountAction.turnOffEmpty.systemImage)
+                Label("Disable Inactive", systemImage: AccountAction.disableInactive.systemImage)
             }
             .tint(.red)
             Button {
-                runManualAction(.turnOnAvailable)
+                runManualAction(.enableAll)
             } label: {
-                Label("Turn On Available (>0%)", systemImage: NineRouterAccountAction.turnOnAvailable.systemImage)
+                Label("Enable All", systemImage: AccountAction.enableAll.systemImage)
             }
             .tint(.green)
         }
@@ -327,7 +327,7 @@ struct DashboardView: View {
                 }
             }
             .buttonStyle(.borderless)
-            .help("Retry the 9Router quota check; cached values stay visible if the server is unavailable")
+            .help("Retry quota check; cached values stay visible if the server is unavailable")
             .accessibilityLabel("Refresh quota")
             SettingsLink {
                 Image(systemName: "gearshape")
@@ -516,7 +516,7 @@ struct QuotaAccountCard: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 10))
                         .foregroundStyle(.orange)
-                    Text("Session lost · Re-login in 9Router")
+                    Text("Session lost · Re-login in CLI Proxy API")
                         .font(.system(size: 9.5))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -527,7 +527,7 @@ struct QuotaAccountCard: View {
                     Image(systemName: "exclamationmark.circle.fill")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
-                    Text("Account unavailable · Check in 9Router")
+                    Text("Account unavailable · Check in CLI Proxy API")
                         .font(.system(size: 9.5))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -700,7 +700,7 @@ struct SettingsView: View {
             } header: {
                 Text("Providers")
             } footer: {
-                Text("API keys are stored in Keychain. Scheduled refreshes are read-only; 9Router changes and credential imports happen only after an explicit menu-bar action.")
+                Text("API keys are stored in Keychain. Scheduled refreshes are read-only; CLI Proxy API changes and credential imports happen only after an explicit menu-bar action.")
             }
 
             Section("Display") {
@@ -714,7 +714,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Antigravity 9Router Bridge") {
+            Section("Antigravity Bridge") {
                 Toggle(isOn: Binding(
                     get: { monitor.configuration.antigravityBridge.isEnabled },
                     set: { newValue in
@@ -724,12 +724,12 @@ struct SettingsView: View {
                     }
                 )) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Switch Antigravity to 9Router")
+                        Text("Switch Antigravity to CLI Proxy")
                             .font(.body.weight(.medium))
                         Text(monitor.isSwitchingAntigravityBridge
                              ? "◌ Applying bridge settings…"
                              : monitor.configuration.antigravityBridge.isEnabled
-                             ? (monitor.bridgeError == nil ? "Enabled · Generation via 9Router" : "Needs attention")
+                             ? (monitor.bridgeError == nil ? "Enabled · Generation via CLI Proxy API" : "Needs attention")
                              : "○ Inactive · Direct Google Cloud Code")
                             .font(.caption)
                             .foregroundStyle(monitor.bridgeError != nil ? Color.orange : Color.secondary)
@@ -780,7 +780,7 @@ struct SettingsView: View {
                         .disabled(monitor.isSwitchingAntigravityBridge)
                     }
                 } else {
-                    Text("Turn ON to automatically route Antigravity app through your 9Router pool using an enabled 9Router provider. Model support depends on that provider.")
+                    Text("Turn ON to automatically route Antigravity app through your CLI Proxy pool using an enabled provider. Model support depends on that provider.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -935,13 +935,13 @@ private struct ProviderEditorView: View {
         VStack(spacing: 0) {
             Form {
                 Section("Provider") {
-                    TextField("Name", text: $provider.name, prompt: Text("My Router"))
-                    TextField("Endpoint", text: $provider.endpoint, prompt: Text("https://router.example.com"))
-                    SecureField("API key", text: $provider.apiKey)
+                    TextField("Name", text: $provider.name, prompt: Text("CLI Proxy API"))
+                    TextField("Endpoint", text: $provider.endpoint, prompt: Text("http://ai.local"))
+                    SecureField("Management Secret Key", text: $provider.apiKey, prompt: Text("Enter secret-key"))
                     Toggle("Enabled", isOn: $provider.isEnabled)
                 }
                 Section {
-                    Text("Endpoint can be a base URL or the complete /v1/quota or /api/usage/quota URL.")
+                    Text("Base URL of your CLI Proxy API server (e.g. http://ai.local or http://192.168.0.39:8317). Bigroute uses the management API to inspect accounts and quota.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

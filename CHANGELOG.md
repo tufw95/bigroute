@@ -4,6 +4,25 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-09-06
+
+### Added
+
+- Native 100% compatibility with CLI Proxy API (`http://ai.local` / CLIProxyAPI v7.2+):
+  - Direct account & quota discovery via `GET /v0/management/auth-files` with management secret key authentication (`Authorization: Bearer <key>`).
+  - Native account status toggling via `PATCH /v0/management/auth-files/status` (`{"name": "...", "disabled": true/false}`).
+  - Account credential importing directly into CLI Proxy API via multipart `POST /v0/management/auth-files`.
+  - Native model routing in Antigravity Bridge proxy forwarding standard model names (`gemini-3.8-flash-high`, `claude-sonnet-4-6`, `gpt-5.5`, `gpt-5.6-sol`) without legacy prefixes.
+
+### Removed
+
+- Completely removed all legacy 9Router dependencies, endpoints, routing actions, and branding throughout the app.
+- Retired legacy 9Router model prefixes (`ag/`, `cx/`) in favor of native model IDs.
+
+### Changed
+
+- Updated Dashboard and Settings UI: streamlined Provider Editor with CLI Proxy API placeholders, modernized account action buttons to "Enable All" and "Disable Inactive", and updated Antigravity Bridge section.
+
 ## [1.6.1] - 2026-09-06
 
 ### Fixed

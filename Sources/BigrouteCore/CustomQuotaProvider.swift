@@ -1,17 +1,24 @@
 import Foundation
 
-/// A user-configured quota source. The API kind is normally automatic so the
-/// settings surface only needs the provider name, endpoint, and API key.
+/// A user-configured quota source. The API kind is CLI Proxy API.
 public enum QuotaAPIKind: String, Codable, CaseIterable, Sendable {
+    case cliProxyAPI
     case automatic
-    case nineRouter
-    case omniRouter
 
     public var displayName: String {
         switch self {
-        case .automatic: "Auto-detect"
-        case .nineRouter: "9Router"
-        case .omniRouter: "OmniRouter"
+        case .cliProxyAPI, .automatic: "CLI Proxy API"
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try? container.decode(String.self)
+        switch raw?.lowercased() {
+        case "cliproxyapi", "cliproxy":
+            self = .cliProxyAPI
+        default:
+            self = .cliProxyAPI
         }
     }
 }
@@ -21,21 +28,29 @@ public struct CustomQuotaProvider: Codable, Equatable, Identifiable, Sendable {
     public var name: String
     public var endpoint: String
     public var apiKey: String
+    public var managementKey: String
     public var apiKind: QuotaAPIKind
     public var isEnabled: Bool
+
+    public var effectiveManagementKey: String {
+        let trimmed = managementKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? apiKey.trimmingCharacters(in: .whitespacesAndNewlines) : trimmed
+    }
 
     public init(
         id: UUID = UUID(),
         name: String = "",
         endpoint: String = "",
         apiKey: String = "",
-        apiKind: QuotaAPIKind = .automatic,
+        managementKey: String = "",
+        apiKind: QuotaAPIKind = .cliProxyAPI,
         isEnabled: Bool = true
     ) {
         self.id = id
         self.name = name
         self.endpoint = endpoint
         self.apiKey = apiKey
+        self.managementKey = managementKey
         self.apiKind = apiKind
         self.isEnabled = isEnabled
     }
@@ -50,7 +65,8 @@ public struct CustomQuotaProvider: Codable, Equatable, Identifiable, Sendable {
         name = try container.decode(String.self, forKey: .name)
         endpoint = try container.decode(String.self, forKey: .endpoint)
         apiKey = ""
-        apiKind = try container.decodeIfPresent(QuotaAPIKind.self, forKey: .apiKind) ?? .automatic
+        managementKey = ""
+        apiKind = try container.decodeIfPresent(QuotaAPIKind.self, forKey: .apiKind) ?? .cliProxyAPI
         isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
     }
 
@@ -65,6 +81,7 @@ public struct CustomQuotaProvider: Codable, Equatable, Identifiable, Sendable {
 }
 
 public enum LegacyProviderID {
-    public static let nineRouter = UUID(uuidString: "6F66E771-9C74-4B3B-9B1D-9B0A57D6AF91")!
+    public static let defaultProvider = UUID(uuidString: "6F66E771-9C74-4B3B-9B1D-9B0A57D6AF91")!
+    public static let nineRouter = defaultProvider
     public static let omniRouter = UUID(uuidString: "9F3AA02E-C6DB-4C80-9BA4-10C2DD6C0B72")!
 }

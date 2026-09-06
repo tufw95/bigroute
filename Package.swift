@@ -20,12 +20,13 @@ let package = Package(
             sources: [
                 "QuotaService.swift",
                 "ManualAccountRouting.swift",
-                "NineRouterAccountImport.swift",
+                "CLIProxyAccountImport.swift",
                 "RouterEndpoint.swift",
                 "CustomQuotaProvider.swift",
                 "SharedQuotaStore.swift",
                 "CredentialStore.swift",
-                "AntigravityBridgeManager.swift"
+                "AntigravityBridgeManager.swift",
+                "CLIProxyAPIService.swift"
             ],
             resources: [
                 .copy("Resources")

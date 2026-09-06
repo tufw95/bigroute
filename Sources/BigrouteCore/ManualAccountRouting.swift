@@ -1,215 +1,187 @@
 import Foundation
 
-public enum NineRouterAccountAction: String, Codable, CaseIterable, Identifiable, Sendable {
-    case turnOffEmpty = "turn_off_empty"
+public enum AccountAction: String, Codable, CaseIterable, Identifiable, Sendable {
+    case enableAll = "enable_all"
+    case disableAll = "disable_all"
+    case disableInactive = "disable_inactive"
     case turnOnAvailable = "turn_on_available"
+    case turnOffEmpty = "turn_off_empty"
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
-        case .turnOffEmpty: "Turn Off Empty (0%)"
-        case .turnOnAvailable: "Turn On Available (>0%)"
+        case .enableAll, .turnOnAvailable: "Enable All"
+        case .disableAll: "Disable All"
+        case .disableInactive, .turnOffEmpty: "Disable Inactive"
         }
     }
 
     public var systemImage: String {
         switch self {
-        case .turnOffEmpty: "pause.circle"
-        case .turnOnAvailable: "play.circle"
+        case .enableAll, .turnOnAvailable: "play.circle"
+        case .disableAll: "pause.circle"
+        case .disableInactive, .turnOffEmpty: "xmark.circle"
         }
     }
 }
 
-public struct NineRouterRoutingCandidate: Codable, Equatable, Sendable {
-    public let label: String
-    public let currentIsActive: Bool
-    public let remainingPercent: Int
-}
+public typealias NineRouterAccountAction = AccountAction
 
-public struct NineRouterRoutingPreview: Codable, Equatable, Identifiable, Sendable {
-    public var id: String { previewToken }
-    public let action: NineRouterAccountAction
-    public let previewToken: String
-    public let createdAt: String
-    public let expiresAt: String
-    public let thresholdPercent: Int
-    public let inspectedCount: Int
-    public let skippedCount: Int
-    public let candidateCount: Int
-    public let candidates: [NineRouterRoutingCandidate]
-}
-
-public struct NineRouterRoutingChange: Codable, Equatable, Sendable {
-    public let id: String?
+public struct CLIProxyRoutingChange: Codable, Equatable, Sendable {
+    public let id: String
     public let label: String
     public let isActive: Bool
+
+    public init(id: String, label: String, isActive: Bool) {
+        self.id = id
+        self.label = label
+        self.isActive = isActive
+    }
 }
 
-public struct NineRouterRoutingSkip: Codable, Equatable, Sendable {
-    public let label: String
-    public let reason: String
-}
-
-public struct NineRouterRoutingResult: Codable, Equatable, Sendable {
-    public let action: NineRouterAccountAction
+public struct CLIProxyRoutingResult: Codable, Equatable, Sendable {
+    public let action: AccountAction
     public let changedCount: Int
     public let skippedCount: Int
-    public let changed: [NineRouterRoutingChange]
-    public let skipped: [NineRouterRoutingSkip]
+    public let changed: [CLIProxyRoutingChange]
+
+    public init(
+        action: AccountAction,
+        changedCount: Int,
+        skippedCount: Int,
+        changed: [CLIProxyRoutingChange]
+    ) {
+        self.action = action
+        self.changedCount = changedCount
+        self.skippedCount = skippedCount
+        self.changed = changed
+    }
 
     public func accountStates(providerID: UUID) -> [String: Bool] {
         changed.reduce(into: [String: Bool]()) { states, change in
-            guard let id = change.id else { return }
-            states[id] = change.isActive
-            states["\(providerID.uuidString):\(id)"] = change.isActive
+            states[change.id] = change.isActive
+            states["\(providerID.uuidString):\(change.id)"] = change.isActive
         }
     }
 }
 
-public enum NineRouterManualRoutingError: Error, LocalizedError, Equatable {
+public typealias NineRouterRoutingResult = CLIProxyRoutingResult
+
+public enum CLIProxyManualRoutingError: Error, LocalizedError, Equatable {
     case unsupportedProvider
-    case invalidResponse
     case unauthorized
-    case serverError(Int, String?)
+    case invalidEndpoint
+    case serverError(Int)
 
     public var errorDescription: String? {
         switch self {
         case .unsupportedProvider:
-            return "Manual account actions are available only for providers configured as 9Router."
-        case .invalidResponse:
-            return "9Router returned an invalid account action response."
+            return "This provider does not support account management."
         case .unauthorized:
-            return "The saved API key cannot perform this 9Router account action."
-        case let .serverError(status, message):
-            return message ?? "9Router could not complete the account action (HTTP \(status))."
+            return "Management key is invalid or required."
+        case .invalidEndpoint:
+            return "Invalid provider endpoint URL."
+        case let .serverError(status):
+            return "CLI Proxy API returned HTTP \(status)."
         }
     }
 }
 
-public final class NineRouterManualRoutingService: @unchecked Sendable {
-    private struct RequestBody: Encodable {
-        let operation: String
-        let action: NineRouterAccountAction
-        let previewToken: String?
-    }
+public typealias NineRouterManualRoutingError = CLIProxyManualRoutingError
 
-    private struct ErrorBody: Decodable {
-        let error: String?
-    }
-
+public final class CLIProxyManualRoutingService: @unchecked Sendable {
     private let session: URLSession
 
     public init(session: URLSession = .shared) {
         self.session = session
     }
 
-    public func preview(
-        action: NineRouterAccountAction,
-        provider: CustomQuotaProvider
-    ) async throws -> NineRouterRoutingPreview {
-        try validate(provider)
-        let data = try await send(
-            provider: provider,
-            body: RequestBody(
-                operation: "preview",
-                action: action,
-                previewToken: nil
-            )
-        )
-        do {
-            return try JSONDecoder().decode(NineRouterRoutingPreview.self, from: data)
-        } catch {
-            throw NineRouterManualRoutingError.invalidResponse
+    public func apply(
+        action: AccountAction,
+        provider: CustomQuotaProvider,
+        accounts: [CodexQuotaAccount]
+    ) async throws -> CLIProxyRoutingResult {
+        guard let url = try? RouterEndpoint.normalizedURL(from: provider.endpoint) else {
+            throw CLIProxyManualRoutingError.invalidEndpoint
         }
+        let key = provider.effectiveManagementKey
+        let cliService = CLIProxyAPIService(session: session)
+
+        let targetAccounts: [(account: CodexQuotaAccount, makeActive: Bool)]
+        switch action {
+        case .enableAll, .turnOnAvailable:
+            targetAccounts = accounts.filter { !$0.isRoutingActive }.map { ($0, true) }
+        case .disableAll:
+            targetAccounts = accounts.filter { $0.isRoutingActive }.map { ($0, false) }
+        case .disableInactive, .turnOffEmpty:
+            targetAccounts = accounts.filter {
+                $0.isRoutingActive && ($0.limitReached || $0.status == "rate_limited" || $0.status == "expired" || $0.status == "unavailable")
+            }.map { ($0, false) }
+        }
+
+        var changed: [CLIProxyRoutingChange] = []
+        for item in targetAccounts {
+            let rawID = item.account.id.contains(":") ? String(item.account.id.split(separator: ":").last!) : item.account.id
+            do {
+                try await cliService.setAccountDisabled(
+                    name: rawID,
+                    disabled: !item.makeActive,
+                    endpoint: url,
+                    managementKey: key
+                )
+                changed.append(CLIProxyRoutingChange(id: rawID, label: item.account.label, isActive: item.makeActive))
+            } catch {
+                // Continue with remaining accounts
+            }
+        }
+
+        let skipped = accounts.count - changed.count
+        return CLIProxyRoutingResult(
+            action: action,
+            changedCount: changed.count,
+            skippedCount: max(0, skipped),
+            changed: changed
+        )
     }
 
-    public func apply(
-        preview: NineRouterRoutingPreview,
-        provider: CustomQuotaProvider
-    ) async throws -> NineRouterRoutingResult {
-        try validate(provider)
-        let data = try await send(
-            provider: provider,
-            body: RequestBody(
-                operation: "apply",
-                action: preview.action,
-                previewToken: preview.previewToken
-            )
-        )
-        do {
-            return try JSONDecoder().decode(NineRouterRoutingResult.self, from: data)
-        } catch {
-            throw NineRouterManualRoutingError.invalidResponse
+    public func toggleSingleAccount(
+        account: CodexQuotaAccount,
+        provider: CustomQuotaProvider,
+        active: Bool
+    ) async throws {
+        guard let url = try? RouterEndpoint.normalizedURL(from: provider.endpoint) else {
+            throw CLIProxyManualRoutingError.invalidEndpoint
         }
+        let key = provider.effectiveManagementKey
+        let rawID = account.id.contains(":") ? String(account.id.split(separator: ":").last!) : account.id
+        let cliService = CLIProxyAPIService(session: session)
+        try await cliService.setAccountDisabled(
+            name: rawID,
+            disabled: !active,
+            endpoint: url,
+            managementKey: key
+        )
     }
 
     public func applyCached(
-        action: NineRouterAccountAction,
+        action: AccountAction,
         provider: CustomQuotaProvider
-    ) async throws -> NineRouterRoutingResult {
-        try validate(provider)
-        do {
-            let data = try await send(
-                provider: provider,
-                body: RequestBody(
-                    operation: "apply_cached",
-                    action: action,
-                    previewToken: nil
-                ),
-                timeoutInterval: 15
-            )
-            return try JSONDecoder().decode(NineRouterRoutingResult.self, from: data)
-        } catch let error as NineRouterManualRoutingError {
-            if case let .serverError(status, _) = error, status == 409 {
-                let preview = try await preview(action: action, provider: provider)
-                return try await apply(preview: preview, provider: provider)
-            }
-            throw error
-        } catch {
-            throw NineRouterManualRoutingError.invalidResponse
-        }
+    ) async throws -> CLIProxyRoutingResult {
+        // Fallback or preview
+        let accounts = (try? await CLIProxyAPIService(session: session).fetchAccounts(
+            endpoint: try RouterEndpoint.normalizedURL(from: provider.endpoint),
+            managementKey: provider.effectiveManagementKey
+        )) ?? []
+        return try await apply(action: action, provider: provider, accounts: accounts)
     }
 
-    private func validate(_ provider: CustomQuotaProvider) throws {
-        guard provider.apiKind != .omniRouter else {
-            throw NineRouterManualRoutingError.unsupportedProvider
-        }
-        guard !provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw NineRouterManualRoutingError.unauthorized
-        }
-    }
-
-    private func send(
-        provider: CustomQuotaProvider,
-        body: RequestBody,
-        timeoutInterval: TimeInterval = 180
-    ) async throws -> Data {
-        let baseURL = try RouterEndpoint.normalizedURL(from: provider.endpoint)
-        var request = URLRequest(
-            url: QuotaService.quotaURL(from: baseURL),
-            cachePolicy: .reloadIgnoringLocalCacheData
-        )
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(provider.apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-        request.httpBody = try JSONEncoder().encode(body)
-        request.timeoutInterval = timeoutInterval
-
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw NineRouterManualRoutingError.invalidResponse
-        }
-        switch http.statusCode {
-        case 200..<300:
-            return data
-        case 401, 403:
-            throw NineRouterManualRoutingError.unauthorized
-        default:
-            let message = try? JSONDecoder().decode(ErrorBody.self, from: data).error
-            throw NineRouterManualRoutingError.serverError(http.statusCode, message ?? nil)
-        }
+    public func preview(
+        action: AccountAction,
+        provider: CustomQuotaProvider
+    ) async throws -> CLIProxyRoutingResult {
+        try await applyCached(action: action, provider: provider)
     }
 }
+
+public typealias NineRouterManualRoutingService = CLIProxyManualRoutingService

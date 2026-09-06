@@ -21,10 +21,11 @@
 		A10000000000000000000010 /* BigrouteMark.svg in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* BigrouteMark.svg */; };
 		A10000000000000000000012 /* THIRD_PARTY_NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* THIRD_PARTY_NOTICES.md */; };
 		A10000000000000000000013 /* ManualAccountRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* ManualAccountRouting.swift */; };
-		A10000000000000000000014 /* NineRouterAccountImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* NineRouterAccountImport.swift */; };
+		A10000000000000000000014 /* CLIProxyAccountImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* CLIProxyAccountImport.swift */; };
 		A10000000000000000000015 /* AntigravityBridgeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* AntigravityBridgeManager.swift */; };
 		A10000000000000000000016 /* antigravity-bridge-proxy.mjs in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* antigravity-bridge-proxy.mjs */; };
 		A10000000000000000000017 /* antigravity-asar-patcher.mjs in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* antigravity-asar-patcher.mjs */; };
+		A10000000000000000000018 /* CLIProxyAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* CLIProxyAPIService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,10 +45,11 @@
 		A20000000000000000000014 /* BigrouteMark.svg */ = {isa = PBXFileReference; lastKnownFileType = image.svg; path = BigrouteMark.svg; sourceTree = "<group>"; };
 		A20000000000000000000015 /* THIRD_PARTY_NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_NOTICES.md; sourceTree = "<group>"; };
 		A20000000000000000000016 /* ManualAccountRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualAccountRouting.swift; sourceTree = "<group>"; };
-		A20000000000000000000017 /* NineRouterAccountImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NineRouterAccountImport.swift; sourceTree = "<group>"; };
+		A20000000000000000000017 /* CLIProxyAccountImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIProxyAccountImport.swift; sourceTree = "<group>"; };
 		A20000000000000000000018 /* AntigravityBridgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityBridgeManager.swift; sourceTree = "<group>"; };
 		A20000000000000000000019 /* antigravity-bridge-proxy.mjs */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Resources/antigravity-bridge-proxy.mjs; sourceTree = "<group>"; };
 		A2000000000000000000001A /* antigravity-asar-patcher.mjs */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Resources/antigravity-asar-patcher.mjs; sourceTree = "<group>"; };
+		A2000000000000000000001B /* CLIProxyAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIProxyAPIService.swift; sourceTree = "<group>"; };
 		A2000000000000000000000B /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -58,7 +60,7 @@
 /* Begin PBXGroup section */
 		A40000000000000000000001 = {isa = PBXGroup; children = (A40000000000000000000002 /* Bigroute */, A40000000000000000000004 /* Core */, A40000000000000000000005 /* Config */, A40000000000000000000007 /* Assets */, A20000000000000000000015 /* THIRD_PARTY_NOTICES.md */, A40000000000000000000006 /* Products */, ); sourceTree = "<group>"; };
 		A40000000000000000000002 /* Bigroute */ = {isa = PBXGroup; children = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000003, A20000000000000000000012, ); path = Sources/Bigroute; sourceTree = "<group>"; };
-		A40000000000000000000004 /* Core */ = {isa = PBXGroup; children = (A20000000000000000000004, A20000000000000000000016, A20000000000000000000017, A20000000000000000000005, A20000000000000000000006, A20000000000000000000007, A20000000000000000000008, A20000000000000000000018, A20000000000000000000019, A2000000000000000000001A, ); path = Sources/BigrouteCore; sourceTree = "<group>"; };
+		A40000000000000000000004 /* Core */ = {isa = PBXGroup; children = (A20000000000000000000004, A20000000000000000000016, A20000000000000000000017, A20000000000000000000005, A20000000000000000000006, A20000000000000000000007, A20000000000000000000008, A20000000000000000000018, A2000000000000000000001B, A20000000000000000000019, A2000000000000000000001A, ); path = Sources/BigrouteCore; sourceTree = "<group>"; };
 		A40000000000000000000005 /* Config */ = {isa = PBXGroup; children = (A2000000000000000000000E, A20000000000000000000010, ); path = Config/Bigroute; sourceTree = "<group>"; };
 		A40000000000000000000006 /* Products */ = {isa = PBXGroup; children = (A2000000000000000000000D, ); name = Products; sourceTree = "<group>"; };
 		A40000000000000000000007 /* Assets */ = {isa = PBXGroup; children = (A20000000000000000000013 /* Bigroute.icns */, A20000000000000000000014 /* BigrouteMark.svg */, ); path = Assets; sourceTree = "<group>"; };
@@ -77,7 +79,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A30000000000000000000001 /* Bigroute Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000003, A1000000000000000000000E, A10000000000000000000004, A10000000000000000000013, A10000000000000000000014, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007, A10000000000000000000008, A10000000000000000000015, ); runOnlyForDeploymentPostprocessing = 0; };
+		A30000000000000000000001 /* Bigroute Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000003, A1000000000000000000000E, A10000000000000000000004, A10000000000000000000013, A10000000000000000000014, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007, A10000000000000000000008, A10000000000000000000015, A10000000000000000000018, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -89,8 +91,8 @@
 /* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
-		A90000000000000000000001 /* App Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CODE_SIGN_ENTITLEMENTS = Config/Bigroute/Bigroute.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1006001; ENABLE_APP_SANDBOX = NO; ENABLE_HARDENED_RUNTIME = YES; INFOPLIST_FILE = Config/Bigroute/Info.plist; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; MACOSX_DEPLOYMENT_TARGET = 14.0; MARKETING_VERSION = 1.6.1; PRODUCT_BUNDLE_IDENTIFIER = com.routerquota.app; PRODUCT_NAME = Bigroute; SWIFT_VERSION = 6.0; }; name = Debug; };
-		A90000000000000000000002 /* App Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; ARCHS = "arm64 x86_64"; CODE_SIGN_ENTITLEMENTS = Config/Bigroute/Bigroute.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1006001; ENABLE_APP_SANDBOX = NO; ENABLE_HARDENED_RUNTIME = YES; INFOPLIST_FILE = Config/Bigroute/Info.plist; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; MACOSX_DEPLOYMENT_TARGET = 14.0; MARKETING_VERSION = 1.6.1; ONLY_ACTIVE_ARCH = NO; PRODUCT_BUNDLE_IDENTIFIER = com.routerquota.app; PRODUCT_NAME = Bigroute; SWIFT_VERSION = 6.0; }; name = Release; };
+		A90000000000000000000001 /* App Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CODE_SIGN_ENTITLEMENTS = Config/Bigroute/Bigroute.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1007000; ENABLE_APP_SANDBOX = NO; ENABLE_HARDENED_RUNTIME = YES; INFOPLIST_FILE = Config/Bigroute/Info.plist; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; MACOSX_DEPLOYMENT_TARGET = 14.0; MARKETING_VERSION = 1.7.0; PRODUCT_BUNDLE_IDENTIFIER = com.routerquota.app; PRODUCT_NAME = Bigroute; SWIFT_VERSION = 6.0; }; name = Debug; };
+		A90000000000000000000002 /* App Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; ARCHS = "arm64 x86_64"; CODE_SIGN_ENTITLEMENTS = Config/Bigroute/Bigroute.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1007000; ENABLE_APP_SANDBOX = NO; ENABLE_HARDENED_RUNTIME = YES; INFOPLIST_FILE = Config/Bigroute/Info.plist; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; MACOSX_DEPLOYMENT_TARGET = 14.0; MARKETING_VERSION = 1.7.0; ONLY_ACTIVE_ARCH = NO; PRODUCT_BUNDLE_IDENTIFIER = com.routerquota.app; PRODUCT_NAME = Bigroute; SWIFT_VERSION = 6.0; }; name = Release; };
 		A90000000000000000000005 /* Project Debug */ = {isa = XCBuildConfiguration; buildSettings = {MACOSX_DEPLOYMENT_TARGET = 14.0; SWIFT_VERSION = 6.0; }; name = Debug; };
 		A90000000000000000000006 /* Project Release */ = {isa = XCBuildConfiguration; buildSettings = {MACOSX_DEPLOYMENT_TARGET = 14.0; SWIFT_VERSION = 6.0; }; name = Release; };
 /* End XCBuildConfiguration section */

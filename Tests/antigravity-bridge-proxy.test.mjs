@@ -232,7 +232,7 @@ test('distinct custom routes never collapse into the same normalized picker ID',
 });
 
 test('model aliases use current discovery and routed model prefixes remain intact', () => {
-  assert.equal(resolveNineRouterModel({ model: 'models/MODEL_PLACEHOLDER_M99' }, { ...config, modelAliases: { MODEL_PLACEHOLDER_M99: 'current-model' } }), 'ag/current-model');
+  assert.equal(resolveNineRouterModel({ model: 'models/MODEL_PLACEHOLDER_M99' }, { ...config, modelAliases: { MODEL_PLACEHOLDER_M99: 'current-model' } }), 'current-model');
   assert.equal(resolveNineRouterModel({ model: 'new-provider/model' }, config), 'new-provider/model');
 });
 

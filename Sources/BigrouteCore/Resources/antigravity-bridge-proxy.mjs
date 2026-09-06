@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Antigravity -> 9Router bridge.
+ * Antigravity -> CLI Proxy API bridge.
  *
  * Cloud Code uses protobuf JSON envelopes. The bridge only translates the
  * generation payload; auth and all other endpoints stay transparent.
@@ -40,8 +40,11 @@ function loadConfig() {
   try {
     if (fs.existsSync(CONFIG_PATH)) {
       const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      const cliProxyUrl = typeof parsed.cliProxyUrl === 'string' ? parsed.cliProxyUrl
+        : (typeof parsed.nineRouterUrl === 'string' ? parsed.nineRouterUrl : '');
       return {
-        nineRouterUrl: typeof parsed.nineRouterUrl === 'string' ? parsed.nineRouterUrl : '',
+        cliProxyUrl,
+        nineRouterUrl: cliProxyUrl,
         apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
         modelMode: parsed.modelMode === 'custom' ? 'custom' : 'keep_official',
         customModels: Array.isArray(parsed.customModels) ? parsed.customModels : []
@@ -50,7 +53,7 @@ function loadConfig() {
   } catch (error) {
     log('Could not read bridge config:', error.code || error.name);
   }
-  return { nineRouterUrl: '', apiKey: '', modelMode: 'keep_official', customModels: [] };
+  return { cliProxyUrl: '', nineRouterUrl: '', apiKey: '', modelMode: 'keep_official', customModels: [] };
 }
 
 function normalizeCloudCodeURL(requestURL) {
@@ -62,10 +65,13 @@ function normalizeCloudCodeURL(requestURL) {
   return `${pathname || '/'}${parsed.search}`;
 }
 
-function mapModelTo9Router(model) {
+function mapModelToCLIProxy(model) {
   if (!model) throw new Error('The generation request does not specify a model.');
-  const id = model.replace(/^models\//, '');
-  return id.includes('/') ? id : `ag/${id}`;
+  return model.replace(/^models\//, '');
+}
+
+function mapModelTo9Router(model) {
+  return mapModelToCLIProxy(model);
 }
 
 function legacyModelSlug(model, index) {
@@ -99,7 +105,7 @@ function collectModelPlaceholders(value, result = new Set()) {
   return result;
 }
 
-function resolveNineRouterModel(body, config) {
+function resolveCLIProxyModel(body, config) {
   const request = generationRequest(body);
   const candidates = modelCandidates(body, request);
   if (config.modelMode === 'custom') {
@@ -120,12 +126,14 @@ function resolveNineRouterModel(body, config) {
     // a placeholder from the official model metadata. Keep those requests on
     // the first configured custom route instead of falling back to Google.
     if (candidates.some(candidate => /^MODEL_PLACEHOLDER_M\d+$/.test(candidate))) {
-      return config.customModels[0]?.id || mapModelTo9Router(candidates[0]);
+      return config.customModels[0]?.id || mapModelToCLIProxy(candidates[0]);
     }
   }
   const model = candidates[0]?.replace(/^models\//, '');
-  return mapModelTo9Router(config.modelAliases?.[model] || model);
+  return mapModelToCLIProxy(config.modelAliases?.[model] || model);
 }
+
+const resolveNineRouterModel = resolveCLIProxyModel;
 
 function readJSON(rawBody) {
   if (!rawBody || rawBody.length === 0) return null;
@@ -164,7 +172,7 @@ function cloneModelDetails(source, id, displayName) {
   return {
     ...template,
     displayName: displayName || id,
-    description: `${displayName || id} (9Router)`,
+    description: `${displayName || id} (CLI Proxy)`,
     supportsImages: template.supportsImages ?? true,
     supportsThinking: template.supportsThinking ?? true,
     thinkingBudget: template.thinkingBudget ?? 8192,
@@ -391,7 +399,7 @@ function chatEndpoint(base) {
   const endpoint = new URL(base);
   if (!['https:', 'http:'].includes(endpoint.protocol)
     || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
-    throw new Error('9Router requires an HTTP or HTTPS endpoint without URL credentials or query parameters.');
+    throw new Error('CLI Proxy API requires an HTTP or HTTPS endpoint without URL credentials or query parameters.');
   }
   const pathname = endpoint.pathname.replace(/\/+$/, '').replace(/\/v1\/(quota|models)$/, '/v1');
   if (/\/chat\/completions$/.test(pathname)) return endpoint;
@@ -571,7 +579,7 @@ async function* openAIEvents(source) {
     const data = lines.map(line => line.slice(5).replace(/^ /, '')).join('\n');
     if (!data) return null;
     if (data.trim() === '[DONE]') return { done: true };
-    try { return JSON.parse(data); } catch (_) { throw new Error('9Router returned malformed stream data.'); }
+    try { return JSON.parse(data); } catch (_) { throw new Error('CLI Proxy API returned malformed stream data.'); }
   };
   for await (const chunk of source) {
     buffer += decoder.write(chunk);
@@ -582,7 +590,7 @@ async function* openAIEvents(source) {
       if (event) yield event;
       if (event?.done) return;
     }
-    if (Buffer.byteLength(buffer) > MAX_BODY_BYTES) throw new Error('9Router stream event exceeds the size limit.');
+    if (Buffer.byteLength(buffer) > MAX_BODY_BYTES) throw new Error('CLI Proxy API stream event exceeds the size limit.');
   }
   buffer += decoder.end();
   if (buffer.trim()) {
@@ -599,7 +607,7 @@ async function* translatedEnvelopes(source) {
   let finished = false;
   let argumentBytes = 0;
   for await (const parsed of openAIEvents(source)) {
-    if (parsed.error) throw new Error('9Router returned a generation error in the stream.');
+    if (parsed.error) throw new Error('CLI Proxy API returned a generation error in the stream.');
     if (parsed.done) { finished = true; break; }
     if (parsed.usage) usage = parsed.usage;
     const choice = parsed.choices?.[0];
@@ -616,17 +624,17 @@ async function* translatedEnvelopes(source) {
       if (call.function?.name) current.name += call.function.name;
       if (call.function?.arguments) {
         argumentBytes += Buffer.byteLength(call.function.arguments);
-        if (argumentBytes > MAX_BODY_BYTES) throw new Error('9Router tool arguments exceed the size limit.');
+        if (argumentBytes > MAX_BODY_BYTES) throw new Error('CLI Proxy API tool arguments exceed the size limit.');
         current.arguments += call.function.arguments;
       }
       toolCalls.set(index, current);
     }
     if (choice.finish_reason) reason = finishReason(choice.finish_reason);
   }
-  if (!receivedChoice || (!finished && !reason)) throw new Error('9Router closed the stream before generation completed.');
+  if (!receivedChoice || (!finished && !reason)) throw new Error('CLI Proxy API closed the stream before generation completed.');
   const parts = [...toolCalls.values()].map(call => {
     const args = JSON.parse(call.arguments || '{}');
-    if (!call.name || !args || typeof args !== 'object' || Array.isArray(args)) throw new Error('9Router returned an invalid function call.');
+    if (!call.name || !args || typeof args !== 'object' || Array.isArray(args)) throw new Error('CLI Proxy API returned an invalid function call.');
     return { functionCall: { id: call.id, name: call.name, args } };
   });
   yield envelope({
@@ -644,7 +652,7 @@ async function translateOpenAIStream(response, res) {
 }
 
 function translateOpenAIResponse(value) {
-  if (value?.error || !value?.choices?.[0]?.message) throw new Error('9Router returned an invalid generation response.');
+  if (value?.error || !value?.choices?.[0]?.message) throw new Error('CLI Proxy API returned an invalid generation response.');
   const choice = value.choices[0];
   const message = choice.message;
   const parts = [];
@@ -652,7 +660,7 @@ function translateOpenAIResponse(value) {
   if (message.content) parts.push({ text: message.content });
   for (const call of message.tool_calls || []) {
     const args = JSON.parse(call.function.arguments || '{}');
-    if (!call.function.name || !args || typeof args !== 'object' || Array.isArray(args)) throw new Error('9Router returned an invalid function call.');
+    if (!call.function.name || !args || typeof args !== 'object' || Array.isArray(args)) throw new Error('CLI Proxy API returned an invalid function call.');
     parts.push({ functionCall: { id: call.id, name: call.function.name, args } });
   }
   return { response: {
@@ -663,7 +671,7 @@ function translateOpenAIResponse(value) {
 
 async function routeGeneration(req, res, config, stream, idleTimeoutMs) {
   if (!config.apiKey) {
-    sendJSON(res, 503, { error: { message: 'Configure an enabled 9Router provider with an API key in Bigroute.' } });
+    sendJSON(res, 503, { error: { message: 'Configure an enabled CLI Proxy API provider with an API key in Bigroute.' } });
     req.resume();
     return;
   }
@@ -717,7 +725,7 @@ function createBridgeServer({ googleUpstream = GOOGLE_UPSTREAM, configProvider =
       target.pathname = parsed.pathname;
       target.search = parsed.search;
       if (parsed.pathname === '/health' && req.method === 'GET') {
-        sendJSON(res, 200, { status: 'ok', proxy: 'antigravity-9router-bridge', version: '1.6.0', scriptHash: SCRIPT_HASH, pid: process.pid });
+        sendJSON(res, 200, { status: 'ok', proxy: 'antigravity-cliproxy-bridge', version: '1.7.0', scriptHash: SCRIPT_HASH, pid: process.pid });
         return;
       }
       // Only exact, known Cloud Code RPCs are translated. New paths, remote

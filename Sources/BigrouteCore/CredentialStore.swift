@@ -232,19 +232,19 @@ public struct CredentialStore: @unchecked Sendable {
         if !nineURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             providers.append(CustomQuotaProvider(
                 id: LegacyProviderID.nineRouter,
-                name: "9Router",
+                name: "CLI Proxy API",
                 endpoint: nineURL,
                 apiKey: nineKey,
-                apiKind: .nineRouter
+                apiKind: .cliProxyAPI
             ))
         }
         if !omniURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             providers.append(CustomQuotaProvider(
                 id: LegacyProviderID.omniRouter,
-                name: "OmniRouter",
+                name: "CLI Proxy API",
                 endpoint: omniURL,
                 apiKey: omniQuotaToken.isEmpty ? omniKey : omniQuotaToken,
-                apiKind: .omniRouter
+                apiKind: .cliProxyAPI
             ))
         }
         return BigrouteConfiguration(

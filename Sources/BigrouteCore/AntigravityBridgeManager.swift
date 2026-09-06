@@ -9,7 +9,7 @@ public enum AntigravityModelMode: String, Codable, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .keepOfficial: "Keep Official Models (Auto-mapped to 9Router)"
+        case .keepOfficial: "Keep Official Models (Auto-mapped to CLI Proxy)"
         case .custom: "Custom Models"
         }
     }
@@ -23,7 +23,7 @@ public struct AntigravityBridgeConfig: Codable, Equatable, Sendable {
     public init(
         isEnabled: Bool = false,
         modelMode: AntigravityModelMode = .keepOfficial,
-        customModelsText: String = "cx/gpt-5.6-sol, ag/gemini-3.8-flash-high, cx/gpt-5.5, ag/claude-sonnet-4-6"
+        customModelsText: String = "gemini-3.8-flash-high, claude-sonnet-4-6, gpt-5.5, gpt-5.6-sol"
     ) {
         self.isEnabled = isEnabled
         self.modelMode = modelMode
@@ -84,8 +84,9 @@ public actor AntigravityBridgeManager {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return false }
             guard let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+            let proxyType = payload["proxy"] as? String
             return payload["status"] as? String == "ok"
-                && payload["proxy"] as? String == "antigravity-9router-bridge"
+                && (proxyType == "antigravity-cliproxy-bridge" || proxyType == "antigravity-9router-bridge")
                 && (scriptHash == nil || payload["scriptHash"] as? String == scriptHash)
         } catch {
             return false
@@ -201,7 +202,7 @@ public actor AntigravityBridgeManager {
         try FileManager.default.createDirectory(at: geminiDir, withIntermediateDirectories: true)
         let safeURL = try RouterEndpoint.normalizedURL(from: nineRouterUrl)
         guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw BridgeError("Choose an enabled 9Router provider with an API key before enabling the bridge.")
+            throw BridgeError("Choose an enabled provider with an API key before enabling the bridge.")
         }
         let parsedCustomModels = customModelsText
             .split(separator: ",")
@@ -214,6 +215,7 @@ public actor AntigravityBridgeManager {
         let ids = parsedCustomModels.compactMap { $0["id"] as? String }
         guard Set(ids).count == ids.count else { throw BridgeError("Custom model IDs must be unique.") }
         let config: [String: Any] = [
+            "cliProxyUrl": safeURL.absoluteString,
             "nineRouterUrl": safeURL.absoluteString,
             "apiKey": apiKey,
             "modelMode": modelMode.rawValue,

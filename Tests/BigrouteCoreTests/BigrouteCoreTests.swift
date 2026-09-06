@@ -228,7 +228,7 @@ import Testing
 
     let configuration = try CredentialStore(defaults: defaults).load()
     #expect(configuration.providers.count == 1)
-    #expect(configuration.providers[0].apiKind == .nineRouter)
+    #expect(configuration.providers[0].apiKind == .cliProxyAPI)
     #expect(defaults.data(forKey: stateKey) == nil)
 
     let normalized = try #require(defaults.data(forKey: "routerQuota.configuration.v2"))
@@ -245,7 +245,7 @@ import Testing
     let defaults = try #require(UserDefaults(suiteName: suiteName))
     let providerID = UUID()
     let persisted = Data("""
-    {"schemaVersion":5,"providers":[{"id":"\(providerID.uuidString)","name":"9Router","endpoint":"https://router.example.com","apiKind":"nineRouter","isEnabled":true}],"refreshIntervalMinutes":2,"sortOrder":"quotaDescending","antigravityBridge":{"isEnabled":true,"modelMode":"keep_official","customModelsText":""}}
+    {"schemaVersion":5,"providers":[{"id":"\(providerID.uuidString)","name":"CLI Proxy API","endpoint":"https://router.example.com","apiKind":"cliProxyAPI","isEnabled":true}],"refreshIntervalMinutes":2,"sortOrder":"quotaDescending","antigravityBridge":{"isEnabled":true,"modelMode":"keep_official","customModelsText":""}}
     """.utf8)
     defaults.set(persisted, forKey: "routerQuota.configuration.v2")
 
@@ -258,33 +258,32 @@ import Testing
     defaults.removePersistentDomain(forName: suiteName)
 }
 
-@Test func customQuotaServiceUsesQuotaRequestsWithConfiguredTimeout() async throws {
+@Test func customQuotaServiceFetchesFromCLIProxyAPI() async throws {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [ReadOnlyQuotaURLProtocol.self]
     let session = URLSession(configuration: configuration)
-    ReadOnlyQuotaURLProtocol.reset(response: Data(#"{"object":"quota","generatedAt":"2026-08-10T00:00:00Z","summary":{"accounts":1,"availableAccounts":1,"unavailableAccounts":0,"lowestRemaining":75},"data":[{"id":"account-1","provider":"codex","name":"Office","plan":"plus","limitReached":false,"quotas":[],"resetCredits":{"availableCount":0},"status":"available"}]}"#.utf8))
+    ReadOnlyQuotaURLProtocol.reset(response: Data(#"{"files":[{"name":"antigravity-plus-1.json","provider":"antigravity","email":"user@gmail.com","disabled":false,"status":"available","success":100,"failed":2}]}"#.utf8))
 
     let provider = CustomQuotaProvider(
-        name: "9Router",
+        name: "CLI Proxy API",
         endpoint: "https://router.example.com/internal",
         apiKey: "test-key",
-        apiKind: .nineRouter
+        apiKind: .cliProxyAPI
     )
     let accounts = try await CustomQuotaService(session: session).fetch(
         provider: provider,
         forceRefresh: true
     )
     #expect(accounts.count == 1)
+    #expect(accounts[0].provider == "antigravity")
+    #expect(accounts[0].label == "user@gmail.com")
+    #expect(accounts[0].isRoutingActive)
 
     let requests = ReadOnlyQuotaURLProtocol.requestsSnapshot()
     #expect(requests.count == 1)
-    #expect(requests.allSatisfy { $0.httpMethod == "GET" })
-    #expect(requests.allSatisfy { $0.timeoutInterval == 60 })
-    #expect(requests.allSatisfy { $0.url?.query == "refresh=1" })
-    #expect(requests.allSatisfy { request in
-        let path = request.url?.path ?? ""
-        return !path.contains("/api/auth/login") && !path.contains("/api/providers")
-    })
+    #expect(requests[0].httpMethod == "GET")
+    #expect(requests[0].url?.path == "/internal/v0/management/auth-files")
+    #expect(requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
 }
 
 @Test func quotaServiceStopsAStalledRequestBeforeTheURLSessionTimeout() async {
@@ -301,220 +300,126 @@ import Testing
     }
 }
 
-@Test func manualRoutingUsesOnlyTheQuotaEndpointAndPreviewToken() async throws {
+@Test func cliProxyAPISetsAccountDisabledStatus() async throws {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [PreviewRoutingURLProtocol.self]
     let session = URLSession(configuration: configuration)
     PreviewRoutingURLProtocol.reset(responses: [
-        Data(#"{"action":"turn_off_empty","previewToken":"one-time-token","createdAt":"2026-08-12T00:00:00Z","expiresAt":"2026-08-12T00:02:00Z","thresholdPercent":5,"inspectedCount":2,"skippedCount":0,"candidateCount":1,"candidates":[{"label":"Office","currentIsActive":true,"remainingPercent":0}]}"#.utf8),
-        Data(#"{"action":"turn_off_empty","changedCount":1,"skippedCount":0,"changed":[{"label":"Office","isActive":false}],"skipped":[]}"#.utf8)
+        Data(#"{"status":"ok"}"#.utf8)
     ])
-    let provider = CustomQuotaProvider(
-        name: "9Router",
-        endpoint: "https://router.example.com/internal",
-        apiKey: "test-key",
-        apiKind: .nineRouter
-    )
-    let service = NineRouterManualRoutingService(session: session)
-
-    let preview = try await service.preview(action: .turnOffEmpty, provider: provider)
-    #expect(preview.previewToken == "one-time-token")
-    #expect(preview.candidateCount == 1)
-    let result = try await service.apply(preview: preview, provider: provider)
-    #expect(result.changedCount == 1)
+    let cli = CLIProxyAPIService(session: session)
+    let endpoint = URL(string: "https://router.example.com/internal")!
+    try await cli.setAccountDisabled(name: "test-account.json", disabled: true, endpoint: endpoint, managementKey: "sec-key")
 
     let requests = PreviewRoutingURLProtocol.requestsSnapshot()
-    #expect(requests.count == 2)
-    #expect(requests.allSatisfy { $0.request.httpMethod == "POST" })
-    #expect(requests.allSatisfy { $0.request.url?.path == "/internal/v1/quota" })
-    #expect(requests.allSatisfy { !($0.request.url?.path.contains("/api/providers") ?? false) })
-    let bodies = try requests.map { captured -> [String: Any] in
-        let body = try #require(captured.body)
-        return try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-    }
-    #expect(bodies[0]["operation"] as? String == "preview")
-    #expect(bodies[0]["previewToken"] == nil)
-    #expect(bodies[1]["operation"] as? String == "apply")
-    #expect(bodies[1]["previewToken"] as? String == "one-time-token")
+    #expect(requests.count == 1)
+    #expect(requests[0].request.httpMethod == "PATCH")
+    #expect(requests[0].request.url?.path == "/internal/v0/management/auth-files/status")
+    #expect(requests[0].request.value(forHTTPHeaderField: "Authorization") == "Bearer sec-key")
+
+    let body = try #require(requests[0].body)
+    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    #expect(json["name"] as? String == "test-account.json")
+    #expect(json["disabled"] as? Bool == true)
 }
 
-@Test func manualRoutingRejectsNonNineRouterProvidersBeforeNetwork() async {
-    let provider = CustomQuotaProvider(
-        name: "Omni",
-        endpoint: "https://router.example.com",
-        apiKey: "test-key",
-        apiKind: .omniRouter
-    )
-    await #expect(throws: NineRouterManualRoutingError.unsupportedProvider) {
-        try await NineRouterManualRoutingService().preview(action: .turnOffEmpty, provider: provider)
-    }
-}
-
-@Test func manualRoutingCachedActionUsesOneRequestAndNoPreview() async throws {
+@Test func cliProxyManualRoutingAppliesActionToTargetAccounts() async throws {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [CachedRoutingURLProtocol.self]
     let session = URLSession(configuration: configuration)
     CachedRoutingURLProtocol.reset(responses: [
-        Data(#"{"action":"turn_on_available","changedCount":2,"skippedCount":0,"changed":[{"id":"one","label":"One","isActive":true},{"id":"two","label":"Two","isActive":true}],"skipped":[]}"#.utf8)
+        Data(#"{"status":"ok"}"#.utf8),
+        Data(#"{"status":"ok"}"#.utf8)
     ])
+
     let provider = CustomQuotaProvider(
-        name: "9Router",
+        name: "CLI Proxy API",
         endpoint: "https://router.example.com/internal",
         apiKey: "test-key",
-        apiKind: .nineRouter
+        apiKind: .cliProxyAPI
     )
 
-    let result = try await NineRouterManualRoutingService(session: session).applyCached(
-        action: .turnOnAvailable,
-        provider: provider
+    let activeAccount = CodexQuotaAccount(
+        id: "acc-1.json",
+        provider: "antigravity",
+        label: "Account 1",
+        plan: "Plus",
+        limitReached: false,
+        quotas: [],
+        resetCredits: .init(availableCount: 0),
+        status: "available",
+        errorCode: nil,
+        isActive: true
     )
-    #expect(result.changedCount == 2)
-    #expect(result.changed.map(\.id) == ["one", "two"])
-    let accountStates = result.accountStates(providerID: provider.id)
-    #expect(accountStates["one"] == true)
-    #expect(accountStates["\(provider.id.uuidString):one"] == true)
-    #expect(accountStates["two"] == true)
-    #expect(accountStates["\(provider.id.uuidString):two"] == true)
+
+    let inactiveAccount = CodexQuotaAccount(
+        id: "acc-2.json",
+        provider: "antigravity",
+        label: "Account 2",
+        plan: "Plus",
+        limitReached: true,
+        quotas: [],
+        resetCredits: .init(availableCount: 0),
+        status: "rate_limited",
+        errorCode: "rate_limit",
+        isActive: true
+    )
+
+    let service = CLIProxyManualRoutingService(session: session)
+    let result = try await service.apply(
+        action: .disableInactive,
+        provider: provider,
+        accounts: [activeAccount, inactiveAccount]
+    )
+
+    #expect(result.changedCount == 1)
+    #expect(result.changed[0].id == "acc-2.json")
+    #expect(result.changed[0].isActive == false)
 
     let requests = CachedRoutingURLProtocol.requestsSnapshot()
     #expect(requests.count == 1)
+    #expect(requests[0].request.httpMethod == "PATCH")
     let body = try #require(requests[0].body)
     let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-    #expect(json["operation"] as? String == "apply_cached")
-    #expect(json["action"] as? String == "turn_on_available")
-    #expect(json["previewToken"] == nil)
+    #expect(json["name"] as? String == "acc-2.json")
+    #expect(json["disabled"] as? Bool == true)
 }
 
-@Test func manualRoutingCachedActionFallsBackToPreviewAndApplyWhenSnapshotExpired() async throws {
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.protocolClasses = [FallbackCachedRoutingURLProtocol.self]
-    let session = URLSession(configuration: configuration)
-    FallbackCachedRoutingURLProtocol.reset(statusResponses: [
-        (statusCode: 409, data: Data(#"{"error":"Quota snapshot expired; refresh and try again"}"#.utf8)),
-        (statusCode: 200, data: Data(#"{"action":"turn_on_available","previewToken":"fallback-token","createdAt":"2026-08-12T00:00:00Z","expiresAt":"2026-08-12T00:02:00Z","thresholdPercent":5,"inspectedCount":2,"skippedCount":0,"candidateCount":1,"candidates":[{"label":"Office","currentIsActive":false,"remainingPercent":50}]}"#.utf8)),
-        (statusCode: 200, data: Data(#"{"action":"turn_on_available","changedCount":1,"skippedCount":0,"changed":[{"id":"office","label":"Office","isActive":true}],"skipped":[]}"#.utf8))
-    ])
-    let provider = CustomQuotaProvider(
-        name: "9Router",
-        endpoint: "https://router.example.com/internal",
-        apiKey: "test-key",
-        apiKind: .nineRouter
-    )
-
-    let result = try await NineRouterManualRoutingService(session: session).applyCached(
-        action: .turnOnAvailable,
-        provider: provider
-    )
-    #expect(result.changedCount == 1)
-    #expect(result.changed.first?.label == "Office")
-
-    let requests = FallbackCachedRoutingURLProtocol.requestsSnapshot()
-    #expect(requests.count == 3)
-    let firstBody = try #require(requests[0].body)
-    let firstJson = try #require(JSONSerialization.jsonObject(with: firstBody) as? [String: Any])
-    #expect(firstJson["operation"] as? String == "apply_cached")
-
-    let secondBody = try #require(requests[1].body)
-    let secondJson = try #require(JSONSerialization.jsonObject(with: secondBody) as? [String: Any])
-    #expect(secondJson["operation"] as? String == "preview")
-
-    let thirdBody = try #require(requests[2].body)
-    let thirdJson = try #require(JSONSerialization.jsonObject(with: thirdBody) as? [String: Any])
-    #expect(thirdJson["operation"] as? String == "apply")
-    #expect(thirdJson["previewToken"] as? String == "fallback-token")
-}
-
-@Test func accountImportParserNormalizesPurchasedCredentialFiles() throws {
-    let file = NineRouterCredentialFile(
-        name: "account.json",
-        data: Data(#"{"type":"codex","email":"person@example.com","account_id":"workspace-1","access_token":"access-value","refresh_token":"refresh-value","id_token":"id-value"}"#.utf8)
-    )
-
-    let accounts = try NineRouterAccountImportParser.parse(files: [file])
-    let account = try #require(accounts.first)
-    #expect(accounts.count == 1)
-    #expect(account.email == "person@example.com")
-    #expect(account.accountID == "workspace-1")
-    #expect(account.accessToken == "access-value")
-    #expect(account.refreshToken == "refresh-value")
-    #expect(account.idToken == "id-value")
-}
-
-@Test func accountImportParserRejectsDuplicateAccountsBeforeNetwork() throws {
-    let first = NineRouterCredentialFile(
-        name: "first.json",
-        data: Data(#"{"email":"person@example.com","account_id":"workspace-1","access_token":"access-one"}"#.utf8)
-    )
-    let duplicate = NineRouterCredentialFile(
-        name: "duplicate.json",
-        data: Data(#"{"email":"other@example.com","accountId":"workspace-1","accessToken":"access-two"}"#.utf8)
-    )
-
-    #expect(throws: NineRouterAccountImportError.duplicateAccount) {
-        try NineRouterAccountImportParser.parse(files: [first, duplicate])
-    }
-}
-
-@Test func accountImportRejectsOversizedFilesBeforeNetwork() async throws {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    let fileURL = directory.appendingPathComponent("oversized.json")
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
-    try Data(
-        repeating: 0x61,
-        count: NineRouterAccountImportParser.maximumFileBytes + 1
-    ).write(to: fileURL)
-    let provider = CustomQuotaProvider(
-        name: "9Router",
-        endpoint: "https://router.example.com/internal",
-        apiKey: "test-key",
-        apiKind: .nineRouter
-    )
-
-    await #expect(
-        throws: NineRouterAccountImportError.fileTooLarge("oversized.json")
-    ) {
-        try await NineRouterAccountImportService().importFiles([fileURL], provider: provider)
-    }
-}
-
-@Test func accountImportUsesOneNoStoreQuotaRequest() async throws {
+@Test func cliProxyAccountImportUploadsMultipartFile() async throws {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [AccountImportURLProtocol.self]
     let session = URLSession(configuration: configuration)
     AccountImportURLProtocol.reset(
-        response: Data(#"{"importedCount":1,"skippedCount":0,"failedCount":0,"results":[{"index":0,"status":"imported"}]}"#.utf8)
-    )
-    let provider = CustomQuotaProvider(
-        name: "9Router",
-        endpoint: "https://router.example.com/internal",
-        apiKey: "test-key",
-        apiKind: .nineRouter
-    )
-    let file = NineRouterCredentialFile(
-        name: "account.json",
-        data: Data(#"{"email":"person@example.com","account_id":"workspace-1","access_token":"access-value","refresh_token":"refresh-value"}"#.utf8)
+        response: Data(#"{"status":"ok"}"#.utf8)
     )
 
-    let result = try await NineRouterAccountImportService(session: session).importFiles(
-        [file],
+    let provider = CustomQuotaProvider(
+        name: "CLI Proxy API",
+        endpoint: "https://router.example.com/internal",
+        apiKey: "test-key",
+        apiKind: .cliProxyAPI
+    )
+
+    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempDir) }
+
+    let fileURL = tempDir.appendingPathComponent("import-account.json")
+    try Data(#"{"email":"test@example.com"}"#.utf8).write(to: fileURL)
+
+    let result = try await CLIProxyAccountImportService(session: session).importFiles(
+        [fileURL],
         provider: provider
     )
     #expect(result.importedCount == 1)
+    #expect(result.failedCount == 0)
 
     let captured = try #require(AccountImportURLProtocol.requestSnapshot())
     #expect(captured.request.httpMethod == "POST")
-    #expect(captured.request.url?.path == "/internal/v1/quota")
+    #expect(captured.request.url?.path == "/internal/v0/management/auth-files")
     #expect(captured.request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
-    #expect(captured.request.value(forHTTPHeaderField: "Cache-Control") == "no-store")
-    let body = try #require(captured.body)
-    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-    #expect(json["operation"] as? String == "bulk_import_codex")
-    let accounts = try #require(json["accounts"] as? [[String: Any]])
-    #expect(accounts.count == 1)
-    #expect(accounts[0]["accountId"] as? String == "workspace-1")
-    #expect(accounts[0]["accessToken"] as? String == "access-value")
-    #expect(accounts[0]["access_token"] == nil)
+    let contentType = captured.request.value(forHTTPHeaderField: "Content-Type") ?? ""
+    #expect(contentType.contains("multipart/form-data"))
 }
 
 @Test func quotaIndicatorBandsMatchDisplayedPercentages() {

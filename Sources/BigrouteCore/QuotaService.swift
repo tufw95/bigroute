@@ -382,12 +382,12 @@ public enum QuotaServiceError: Error, LocalizedError, Equatable, Sendable {
         case .invalidResponse:
             return "The router returned an invalid quota response."
         case .requestTimedOut:
-            return "9Router quota aggregation is unavailable; showing cached data."
+            return "CLI Proxy API quota aggregation is unavailable; showing cached data."
         case let .serverError(statusCode):
             if [502, 503, 504].contains(statusCode) {
-                return "9Router quota aggregation is unavailable (HTTP \(statusCode))."
+                return "CLI Proxy API quota aggregation is unavailable (HTTP \(statusCode))."
             }
-            return "Router quota is temporarily unavailable (HTTP \(statusCode))."
+            return "CLI Proxy API quota is temporarily unavailable (HTTP \(statusCode))."
         }
     }
 }
@@ -1085,75 +1085,28 @@ public final class CustomQuotaService: @unchecked Sendable {
         forceRefresh: Bool = false
     ) async throws -> [CodexQuotaAccount] {
         let endpoint = provider.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        let key = provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !endpoint.isEmpty, let url = URL(string: endpoint) else {
+        guard !endpoint.isEmpty, let url = try? RouterEndpoint.normalizedURL(from: endpoint) else {
             throw RouterEndpointError.invalidURL
         }
-        guard !key.isEmpty else { throw QuotaServiceError.unauthorized }
+        let key = provider.effectiveManagementKey
 
-        switch provider.apiKind {
-        case .nineRouter:
-            return try await fetchNine(url: url, key: key, providerID: provider.id, forceRefresh: forceRefresh)
-        case .omniRouter:
-            return try await fetchOmni(url: url, key: key, providerID: provider.id, forceRefresh: forceRefresh)
-        case .automatic:
-            do {
-                return try await fetchNine(url: url, key: key, providerID: provider.id, forceRefresh: forceRefresh)
-            } catch let firstError {
-                guard Self.isFallbackCandidate(firstError) else {
-                    throw firstError
-                }
-                do {
-                    return try await fetchOmni(url: url, key: key, providerID: provider.id, forceRefresh: forceRefresh)
-                } catch let secondError {
-                    if Self.isUnauthorized(firstError) || Self.isUnauthorized(secondError) {
-                        throw QuotaServiceError.unauthorized
-                    }
-                    throw secondError
-                }
+        let cliService = CLIProxyAPIService(session: session)
+        do {
+            let accounts = try await cliService.fetchAccounts(endpoint: url, managementKey: key)
+            return accounts.map { $0.sourced(providerID: provider.id) }
+        } catch let err as CLIProxyAPIError {
+            switch err {
+            case .unauthorized:
+                throw QuotaServiceError.unauthorized
+            case .unsupported:
+                throw QuotaServiceError.unsupported
+            case let .serverError(code):
+                throw QuotaServiceError.serverError(code)
+            case .invalidResponse, .invalidURL:
+                throw QuotaServiceError.invalidResponse
             }
+        } catch {
+            throw error
         }
-    }
-
-    private func fetchNine(
-        url: URL,
-        key: String,
-        providerID: UUID,
-        forceRefresh: Bool
-    ) async throws -> [CodexQuotaAccount] {
-        let response = try await QuotaService(session: session).fetch(
-            apiKey: key,
-            targetBaseURL: url,
-            forceRefresh: forceRefresh
-        )
-        return response.data.map { $0.sourced(providerID: providerID) }
-    }
-
-    private func fetchOmni(
-        url: URL,
-        key: String,
-        providerID: UUID,
-        forceRefresh: Bool
-    ) async throws -> [CodexQuotaAccount] {
-        let response = try await OmniQuotaService(session: session).fetch(
-            apiKey: key,
-            targetBaseURL: url,
-            forceRefresh: forceRefresh
-        )
-        return response.accounts.map { $0.sourced(providerID: providerID) }
-    }
-
-    private static func isFallbackCandidate(_ error: Error) -> Bool {
-        guard let quotaError = error as? QuotaServiceError else { return false }
-        switch quotaError {
-        case .unsupported:
-            return true
-        default:
-            return false
-        }
-    }
-
-    private static func isUnauthorized(_ error: Error) -> Bool {
-        (error as? QuotaServiceError) == .unauthorized
     }
 }

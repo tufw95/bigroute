@@ -112,7 +112,7 @@ final class QuotaMonitor {
     }
 
     private var bridgeProvider: CustomQuotaProvider? {
-        enabledProviders.first(where: { $0.apiKind == .nineRouter }) ?? enabledProviders.first
+        enabledProviders.first(where: { $0.apiKind == .cliProxyAPI }) ?? enabledProviders.first
     }
 
     private func synchronizeBridgeConfiguration() async {
@@ -278,7 +278,7 @@ final class QuotaMonitor {
         provider: CustomQuotaProvider
     ) async throws -> NineRouterAccountImportResult {
         guard !isLoadingConfiguration, persistedConfiguration != nil, !isImportingAccounts, !isRunningManualAction else {
-            throw AccountImportStateError("Another 9Router account operation is already running.")
+            throw AccountImportStateError("Another account operation is already running.")
         }
         isImportingAccounts = true
         defer { isImportingAccounts = false }
