@@ -4,6 +4,16 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.5] - 2026-09-07
+
+### Fixed
+
+- **App Transport Security (ATS) for Custom Intranet Endpoints**:
+  - Enabled `NSAllowsArbitraryLoads` in `Info.plist` to allow non-HTTPS intranet domains (such as `http://ai.tnas/`, private DNS, or Tailscale MagicDNS hostnames) to connect seamlessly via `URLSession`.
+  - Previously, macOS ATS blocked non-`.local` HTTP domains at the system level while browsers like Chrome connected normally.
+- **Antigravity Bridge Model Fallback**:
+  - Added official fallback mapping for `gemini-2.5-flash-lite` to `gemini-3.1-flash-lite` in the bridge proxy, resolving upstream HTTP 400 errors during background completions and inline generations.
+
 ## [1.7.4] - 2026-09-06
 
 ### Fixed
