@@ -4,30 +4,27 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Bigroute</title>
         <item>
-            <title>1.7.4</title>
-            <pubDate>Sun, 06 Sep 2026 06:04:16 +0000</pubDate>
+            <title>1.7.5</title>
+            <pubDate>Mon, 07 Sep 2026 11:09:43 +0000</pubDate>
             <link>https://github.com/tufw95/bigroute</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.4</sparkle:fullReleaseNotesLink>
-            <sparkle:version>1007004</sparkle:version>
-            <sparkle:shortVersionString>1.7.4</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.5</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1007005</sparkle:version>
+            <sparkle:shortVersionString>1.7.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description sparkle:format="markdown"><![CDATA[
 ### Fixed
 
-- **Antigravity Quota Filtering**:
-  - Exclusively track **Gemini Models** quota buckets (5-hour session and weekly limits) from `retrieveUserQuotaSummary`.
-  - Completely ignore third-party models ("Claude and GPT models" group), ensuring session and weekly quota percentages and reset times match official Google Gemini allocations.
-  - Added primary endpoint querying against `daily-cloudcode-pa.googleapis.com` with automated fallback to `cloudcode-pa.googleapis.com`.
-- **Accurate Session & Weekly Quota Displays**:
-  - Corrected `sessionQuota` resolution to prevent proxy HTTP success/request counts from masquerading as session limits.
-  - Added full support for CLI Proxy API cached quota signals (`X-Codex-Primary-Used-Percent`, `X-Codex-Secondary-Used-Percent`, reset times, and plans).
-  - Robust numeric parsing for OpenAI Codex `wham/usage` usage windows (`primary_window`, `secondary_window`).
+- **App Transport Security (ATS) for Custom Intranet Endpoints**:
+  - Enabled `NSAllowsArbitraryLoads` in `Info.plist` to allow non-HTTPS intranet domains (such as `http://ai.tnas/`, private DNS, or Tailscale MagicDNS hostnames) to connect seamlessly via `URLSession`.
+  - Previously, macOS ATS blocked non-`.local` HTTP domains at the system level while browsers like Chrome connected normally.
+- **Antigravity Bridge Model Fallback**:
+  - Added official fallback mapping for `gemini-2.5-flash-lite` to `gemini-3.1-flash-lite` in the bridge proxy, resolving upstream HTTP 400 errors during background completions and inline generations.
 
 ]]></description>
-            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.4/Bigroute-1.7.4.zip" length="3467980" type="application/octet-stream" sparkle:edSignature="U6dZlgh1YNUWxqC8xJQZCmSIsJuWxU5mHST39jN8zheiQlDycqSDokc8pykvF7t+bN2qW7OZRrlXAsDF4zAcAQ=="></enclosure>
+            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.5/Bigroute-1.7.5.zip" length="3468066" type="application/octet-stream" sparkle:edSignature="FJ12Iqr1Sqk/+mDfq/VsQheapDmfBf/M9Mgaf0PtWEScTXLQSJLx4CjeAZnEh2g3U6gu+0MchhJnMg3QZIYtAQ=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: i8Wa+A0LMFQe0zaZY6OiGEreQYEqyYRAagfdtWbSfPwBsS8FjX5/NnH70fS1yPyzkghgnXq2tBhLRsST+A6LCA==
-length: 2246
+edSignature: Ecxmz4iDH2cjZqoUdZXhEFiT4zS6xmT25ED8BwvRvY8m954XZ871p1+IDgRJe106qWg+MsYBu3ja/dmzJBrbCQ==
+length: 1976
 -->
