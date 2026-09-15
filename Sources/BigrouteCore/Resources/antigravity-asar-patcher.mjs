@@ -6,6 +6,7 @@ import { execSync } from 'node:child_process';
 
 const TARGET_STR = "'https://daily-cloudcode-pa.googleapis.com'";
 const PATCH_CODE = "(() => { try { const os = require('os'); const fs = require('fs'); const ep = fs.readFileSync(require('path').join(os.homedir(), '.gemini', 'antigravity', 'cloud_code_endpoint.txt'), 'utf8').trim(); if (ep) return ep; } catch (e) {} return process.env.ANTIGRAVITY_CLOUD_CODE_ENDPOINT || 'https://daily-cloudcode-pa.googleapis.com'; })()";
+const GOOGLE_DESIGNATED_REQUIREMENT = 'designated => anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = EQHXZ8M8AV';
 
 export function getAppPaths(customAppPath) {
   const appPath = customAppPath || '/Applications/Antigravity.app';
@@ -18,10 +19,10 @@ export function getAppPaths(customAppPath) {
 export function checkPatchStatus(customAppPath) {
   const { appPath, asarPath, infoPlistPath } = getAppPaths(customAppPath);
   if (!fs.existsSync(appPath)) {
-    return { appExists: false, isPatched: false, error: 'Antigravity.app not found' };
+    return { appExists: false, isPatched: false, drMatches: false, error: 'Antigravity.app not found' };
   }
   if (!fs.existsSync(asarPath)) {
-    return { appExists: true, isPatched: false, error: 'app.asar not found' };
+    return { appExists: true, isPatched: false, drMatches: false, error: 'app.asar not found' };
   }
   try {
     const buf = fs.readFileSync(asarPath);
@@ -34,9 +35,14 @@ export function checkPatchStatus(customAppPath) {
         integrityMatches = (plistHash.toLowerCase() === hash.toLowerCase());
       } catch {}
     }
-    return { appExists: true, isPatched, integrityMatches, error: null };
+    let drMatches = false;
+    try {
+      const drOut = execSync(`codesign -d -r- "${appPath}" 2>/dev/null`, { encoding: 'utf8' });
+      drMatches = drOut.includes('EQHXZ8M8AV');
+    } catch {}
+    return { appExists: true, isPatched, integrityMatches, drMatches, error: null };
   } catch (err) {
-    return { appExists: true, isPatched: false, error: err.message };
+    return { appExists: true, isPatched: false, drMatches: false, error: err.message };
   }
 }
 
@@ -47,6 +53,15 @@ export function applyPatch(customAppPath) {
     throw new Error(`Antigravity.app not found at ${appPath}`);
   }
   if (status.isPatched && status.integrityMatches) {
+    if (!status.drMatches) {
+      if (fs.existsSync(shipItPath)) {
+        try {
+          execSync(`codesign --force -s - -r='${GOOGLE_DESIGNATED_REQUIREMENT}' "${shipItPath}"`, { stdio: 'pipe' });
+        } catch {}
+      }
+      execSync(`codesign --force --deep -s - -r='${GOOGLE_DESIGNATED_REQUIREMENT}' "${appPath}"`, { stdio: 'pipe' });
+      return { status: 'ok', patched: true, resignedDR: true };
+    }
     return { status: 'ok', patched: true, alreadyPatched: true };
   }
 
@@ -86,15 +101,15 @@ export function applyPatch(customAppPath) {
     const newHash = crypto.createHash('sha256').update(newBuf).digest('hex');
     execSync(`/usr/libexec/PlistBuddy -c "Set :ElectronAsarIntegrity:Resources/app.asar:hash ${newHash}" "${infoPlistPath}"`, { stdio: 'pipe' });
 
-    // Codesign ShipIt if present (prevents dyld Team ID mismatch on Mantle.framework)
+    // Codesign ShipIt preserving Google's Designated Requirement
     if (fs.existsSync(shipItPath)) {
       try {
-        execSync(`codesign --force -s - "${shipItPath}"`, { stdio: 'pipe' });
+        execSync(`codesign --force -s - -r='${GOOGLE_DESIGNATED_REQUIREMENT}' "${shipItPath}"`, { stdio: 'pipe' });
       } catch {}
     }
 
-    // Deep ad-hoc codesign of the entire app bundle
-    execSync(`codesign --force --deep -s - "${appPath}"`, { stdio: 'pipe' });
+    // Deep ad-hoc codesign of the entire app bundle preserving Google's Designated Requirement
+    execSync(`codesign --force --deep -s - -r='${GOOGLE_DESIGNATED_REQUIREMENT}' "${appPath}"`, { stdio: 'pipe' });
 
     return { status: 'ok', patched: true, hash: newHash };
   } finally {
@@ -109,7 +124,7 @@ const targetApp = process.argv[3];
 if (mode === 'check') {
   const result = checkPatchStatus(targetApp);
   console.log(JSON.stringify(result));
-  process.exit(result.isPatched && result.integrityMatches ? 0 : 1);
+  process.exit(result.isPatched && result.integrityMatches && result.drMatches ? 0 : 1);
 } else if (mode === 'patch') {
   try {
     const result = applyPatch(targetApp);

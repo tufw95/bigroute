@@ -20,6 +20,7 @@ test('checkPatchStatus against current Antigravity.app succeeds', () => {
   assert.equal(status.appExists, true);
   assert.equal(status.isPatched, true);
   assert.equal(status.integrityMatches, true);
+  assert.equal(status.drMatches, true);
 });
 
 test('applyPatch is idempotent when app is already patched', () => {

@@ -158,7 +158,8 @@ public actor AntigravityBridgeManager {
                let appExists = obj["appExists"] as? Bool,
                let isPatched = obj["isPatched"] as? Bool,
                let integrityMatches = obj["integrityMatches"] as? Bool {
-                return (appExists, isPatched && integrityMatches)
+                let drMatches = obj["drMatches"] as? Bool ?? true
+                return (appExists, isPatched && integrityMatches && drMatches)
             }
         } catch {
             Self.logger.error("Error checking patch status: \(error.localizedDescription)")

@@ -4,6 +4,15 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.6] - 2026-09-15
+
+### Fixed
+
+- **Antigravity Auto-Updater Compatibility**:
+  - Preserved Google LLC's official Designated Requirement (`EQHXZ8M8AV`) during ad-hoc re-signing of `/Applications/Antigravity.app` and `ShipIt`.
+  - Resolved `Squirrel.Mac` signature verification failure (`errSecCSReqFailed (-67050)`), allowing Antigravity update notifications and in-app "Restart to Update" prompts to function seamlessly on all future releases without manual intervention.
+  - Added `drMatches` check to `AntigravityBridgeManager` to automatically detect and correct signature requirements without requiring a complete re-patch.
+
 ## [1.7.5] - 2026-09-07
 
 ### Fixed
