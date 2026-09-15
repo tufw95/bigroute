@@ -4,6 +4,21 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.9] - 2026-09-15
+
+### Fixed
+
+- **UI & Tooltip Polishing**:
+  - Corrected tooltip copy on the inactive accounts visibility toggle.
+  - Synchronized empty state instructions to refer to the "Enable All" action.
+- **Deep Link Navigation**:
+  - Fixed `bigroute://settings` URL scheme handler to open the Settings window rather than re-triggering the menu-bar popover.
+- **Safety & Robustness**:
+  - Removed force unwrapping on account identifier parsing in manual routing to prevent runtime panics.
+  - Improved Provider Editor sheet workflow so saving valid credentials cleanly updates configuration and dismisses without stale error interference.
+- **Performance**:
+  - Reused static relative date time formatter to minimize allocations and reduce rendering overhead on macOS.
+
 ## [1.7.8] - 2026-09-15
 
 ### Fixed

@@ -315,7 +315,7 @@ struct DashboardView: View {
                     .foregroundStyle(hideInactiveAccounts ? .secondary : .primary)
             }
             .buttonStyle(.borderless)
-            .help(hideInactiveAccounts ? "Show inactive accounts (Off)" : "Hide inactive accounts (Off)")
+            .help(hideInactiveAccounts ? "Show inactive accounts" : "Hide inactive accounts")
             .accessibilityLabel(hideInactiveAccounts ? "Show inactive accounts" : "Hide inactive accounts")
             Button {
                 monitor.refresh(force: true)
@@ -446,7 +446,7 @@ struct DashboardView: View {
             return "Open Settings to add a quota provider."
         }
         if hideInactiveAccounts {
-            return "All accounts are currently turned off. Click the eye icon to view inactive accounts or use Turn On Available."
+            return "All accounts are currently turned off. Click the eye icon to view inactive accounts or use Enable All."
         }
         return "Check the endpoint and API key in Settings."
     }
@@ -637,12 +637,17 @@ enum QuotaDateParser {
     }
 }
 
+@MainActor
 enum EnglishRelativeTime {
-    static func string(from date: Date, relativeTo reference: Date = Date()) -> String {
+    private static let formatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.locale = Locale(identifier: "en_US")
         formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: reference)
+        return formatter
+    }()
+
+    static func string(from date: Date, relativeTo reference: Date = Date()) -> String {
+        formatter.localizedString(for: date, relativeTo: reference)
     }
 }
 
@@ -990,11 +995,10 @@ private struct ProviderEditorView: View {
             }
             _ = try RouterEndpoint.normalizedURL(from: provider.endpoint)
             guard !provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw EditorError("Enter an API key.")
+                throw EditorError("Enter a Management Secret Key.")
             }
             onSave(provider)
-            if let error = monitor.errorMessage { validationMessage = error }
-            else { dismiss() }
+            dismiss()
         } catch {
             validationMessage = error.localizedDescription
         }

@@ -122,7 +122,7 @@ public final class CLIProxyManualRoutingService: @unchecked Sendable {
 
         var changed: [CLIProxyRoutingChange] = []
         for item in targetAccounts {
-            let rawID = item.account.id.contains(":") ? String(item.account.id.split(separator: ":").last!) : item.account.id
+            let rawID = item.account.id.split(separator: ":").last.map(String.init) ?? item.account.id
             do {
                 try await cliService.setAccountDisabled(
                     name: rawID,
@@ -154,7 +154,7 @@ public final class CLIProxyManualRoutingService: @unchecked Sendable {
             throw CLIProxyManualRoutingError.invalidEndpoint
         }
         let key = provider.effectiveManagementKey
-        let rawID = account.id.contains(":") ? String(account.id.split(separator: ":").last!) : account.id
+        let rawID = account.id.split(separator: ":").last.map(String.init) ?? account.id
         let cliService = CLIProxyAPIService(session: session)
         try await cliService.setAccountDisabled(
             name: rawID,

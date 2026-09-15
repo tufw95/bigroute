@@ -123,7 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover?.performClose(nil)
             DispatchQueue.main.async {
                 NSApp.activate(ignoringOtherApps: true)
-                self.showPopover()
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             }
             return
         }
