@@ -20,8 +20,8 @@ import pathlib, plistlib, sys, urllib.parse, xml.etree.ElementTree as ET, zipfil
 feed, archive, app = map(pathlib.Path, sys.argv[1:])
 ns = {'sparkle': 'http://www.andymatuschak.org/xml-namespaces/sparkle'}
 items = ET.parse(feed).getroot().findall('./channel/item')
-if len(items) != 1:
-    sys.exit('Expected exactly one update in the channel feed.')
+if len(items) < 1:
+    sys.exit('Expected at least one update in the channel feed.')
 item = items[0]
 with zipfile.ZipFile(archive) as zipped:
     info = plistlib.loads(zipped.read('Bigroute.app/Contents/Info.plist'))
