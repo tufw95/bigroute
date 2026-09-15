@@ -298,17 +298,6 @@ private enum Keychain {
         guard let data = result as? Data, let value = String(data: data, encoding: .utf8) else {
             throw KeychainError(status: errSecDecode)
         }
-        #if os(macOS)
-        var access: SecAccess?
-        if SecAccessCreate("Bigroute Credentials" as CFString, nil, &access) == errSecSuccess, let access {
-            let updateQuery: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: account
-            ]
-            SecItemUpdate(updateQuery as CFDictionary, [kSecAttrAccess as String: access] as CFDictionary)
-        }
-        #endif
         return value
     }
 
@@ -323,25 +312,13 @@ private enum Keychain {
             return
         }
         let data = Data(value.utf8)
-        var updateAttrs: [String: Any] = [kSecValueData as String: data]
-        #if os(macOS)
-        var access: SecAccess?
-        if SecAccessCreate("Bigroute Credentials" as CFString, nil, &access) == errSecSuccess, let access {
-            updateAttrs[kSecAttrAccess as String] = access
-        }
-        #endif
         // Update in place to retain the item's ACL. Only create on not-found;
         // denial/locked Keychain must never masquerade as a missing credential.
-        var status = SecItemUpdate(lookup as CFDictionary, updateAttrs as CFDictionary)
+        var status = SecItemUpdate(lookup as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if status == errSecItemNotFound {
             var create = lookup
             create[kSecValueData as String] = data
             create[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-            #if os(macOS)
-            if let access {
-                create[kSecAttrAccess as String] = access
-            }
-            #endif
             status = SecItemAdd(create as CFDictionary, nil)
         }
         guard status == errSecSuccess else { throw KeychainError(status: status) }

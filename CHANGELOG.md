@@ -4,11 +4,22 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.8] - 2026-09-15
+
+### Fixed
+
+- **Keychain Permission Prompts**:
+  - Removed internal Keychain ACL modification calls that triggered repeated macOS security dialogs ("Bigroute wants to change access permissions of the item in your keychain").
+  - Restored quiet, standard Keychain read and write operations.
+- **Quota Error Clarity**:
+  - Added dedicated `missingAPIKey` error detection when Management Secret Key is empty or unavailable.
+  - Clarified HTTP 404 response messaging to prompt users to verify their endpoint URL and Management Secret Key in Settings.
+
 ## [1.7.7] - 2026-09-15
 
 ### Added
 
-- **Launch at Login ("Khởi động cùng macOS")**:
+- **Launch at Login**:
   - Added a "Launch Bigroute at login" toggle in Settings under a new "General" section (enabled by default).
   - Automatically manages background registration with `SMAppService.mainApp` while respecting explicit user disablement.
 - **Auto-Update Toggles in Settings**:

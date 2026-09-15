@@ -369,14 +369,17 @@ public struct CodexQuotaResponse: Codable, Equatable, Sendable {
 public enum QuotaServiceError: Error, LocalizedError, Equatable, Sendable {
     case unsupported
     case unauthorized
+    case missingAPIKey
     case invalidResponse
     case requestTimedOut
     case serverError(Int)
 
     public var errorDescription: String? {
         switch self {
+        case .missingAPIKey:
+            return "Management Secret Key is required. Please check your API Key in Settings."
         case .unsupported:
-            return "This router does not provide quota tracking yet."
+            return "Quota tracking endpoint was not found (HTTP 404). Please verify your endpoint URL and Management Secret Key in Settings."
         case .unauthorized:
             return "The saved API key cannot access this quota endpoint."
         case .invalidResponse:
@@ -1089,6 +1092,9 @@ public final class CustomQuotaService: @unchecked Sendable {
             throw RouterEndpointError.invalidURL
         }
         let key = provider.effectiveManagementKey
+        guard !key.isEmpty else {
+            throw QuotaServiceError.missingAPIKey
+        }
 
         let cliService = CLIProxyAPIService(session: session)
         do {
