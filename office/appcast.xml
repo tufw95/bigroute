@@ -4,27 +4,26 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Bigroute</title>
         <item>
-            <title>1.7.5</title>
-            <pubDate>Mon, 07 Sep 2026 11:09:43 +0000</pubDate>
+            <title>1.7.6</title>
+            <pubDate>Tue, 15 Sep 2026 02:46:02 +0000</pubDate>
             <link>https://github.com/tufw95/bigroute</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.5</sparkle:fullReleaseNotesLink>
-            <sparkle:version>1007005</sparkle:version>
-            <sparkle:shortVersionString>1.7.5</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.6</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1007006</sparkle:version>
+            <sparkle:shortVersionString>1.7.6</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description sparkle:format="markdown"><![CDATA[
 ### Fixed
 
-- **App Transport Security (ATS) for Custom Intranet Endpoints**:
-  - Enabled `NSAllowsArbitraryLoads` in `Info.plist` to allow non-HTTPS intranet domains (such as `http://ai.tnas/`, private DNS, or Tailscale MagicDNS hostnames) to connect seamlessly via `URLSession`.
-  - Previously, macOS ATS blocked non-`.local` HTTP domains at the system level while browsers like Chrome connected normally.
-- **Antigravity Bridge Model Fallback**:
-  - Added official fallback mapping for `gemini-2.5-flash-lite` to `gemini-3.1-flash-lite` in the bridge proxy, resolving upstream HTTP 400 errors during background completions and inline generations.
+- **Antigravity Auto-Updater Compatibility**:
+  - Preserved Google LLC's official Designated Requirement (`EQHXZ8M8AV`) during ad-hoc re-signing of `/Applications/Antigravity.app` and `ShipIt`.
+  - Resolved `Squirrel.Mac` signature verification failure (`errSecCSReqFailed (-67050)`), allowing Antigravity update notifications and in-app "Restart to Update" prompts to function seamlessly on all future releases without manual intervention.
+  - Added `drMatches` check to `AntigravityBridgeManager` to automatically detect and correct signature requirements without requiring a complete re-patch.
 
 ]]></description>
-            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.5/Bigroute-1.7.5.zip" length="3468066" type="application/octet-stream" sparkle:edSignature="FJ12Iqr1Sqk/+mDfq/VsQheapDmfBf/M9Mgaf0PtWEScTXLQSJLx4CjeAZnEh2g3U6gu+0MchhJnMg3QZIYtAQ=="></enclosure>
+            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.6/Bigroute-1.7.6.zip" length="3468527" type="application/octet-stream" sparkle:edSignature="FwC+N1hSfYf4pTMQWWr40mcCknOMyeiSBAYNCiazi5laO7NAMXhRWqBJQEKGtcNUPJk4dlgDz20naqudWpKfCg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: Ecxmz4iDH2cjZqoUdZXhEFiT4zS6xmT25ED8BwvRvY8m954XZ871p1+IDgRJe106qWg+MsYBu3ja/dmzJBrbCQ==
-length: 1976
+edSignature: p42ignhLrcvyF5hdMLlwJ9UZqiKPFZPIwnvO8lHHzWNR7Tvt2g4O69r1aTFW8SHdg8osoXWX1znwpTqFyQy2AQ==
+length: 1935
 -->
