@@ -172,7 +172,10 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
           TAG: ${{ steps.release.outputs.tag }}
           REPOSITORY: ${{ github.repository }}
-        run: ./scripts/generate_appcast.sh
+        run: |
+          mkdir -p dist
+          curl -fsSL "https://raw.githubusercontent.com/$REPOSITORY/ota-feeds/office/appcast.xml" -o dist/appcast.xml || true
+          ./scripts/generate_appcast.sh
 
       - name: Validate office artifacts
         env:

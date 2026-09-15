@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 #if canImport(ServiceManagement)
 import ServiceManagement
 #endif
@@ -22,6 +23,66 @@ struct BigrouteApp: App {
 }
 
 @MainActor
+@Observable
+final class LaunchAtLogin {
+    static let shared = LaunchAtLogin()
+    private static let explicitlyDisabledKey = "launchAtLoginExplicitlyDisabled"
+
+    var isEnabled: Bool {
+        get {
+            #if canImport(ServiceManagement)
+            if #available(macOS 13.0, *) {
+                return SMAppService.mainApp.status == .enabled
+            }
+            #endif
+            return false
+        }
+        set {
+            #if canImport(ServiceManagement)
+            if #available(macOS 13.0, *) {
+                do {
+                    if newValue {
+                        UserDefaults.standard.removeObject(forKey: Self.explicitlyDisabledKey)
+                        if SMAppService.mainApp.status != .enabled {
+                            try SMAppService.mainApp.register()
+                        }
+                    } else {
+                        UserDefaults.standard.set(true, forKey: Self.explicitlyDisabledKey)
+                        if SMAppService.mainApp.status == .enabled {
+                            try SMAppService.mainApp.unregister()
+                        }
+                    }
+                } catch {
+                    Logger(subsystem: "com.routerquota.app", category: "App")
+                        .error("Failed to update launch at login: \(error.localizedDescription)")
+                }
+            }
+            #endif
+        }
+    }
+
+    var requiresApproval: Bool {
+        #if canImport(ServiceManagement)
+        if #available(macOS 13.0, *) {
+            return SMAppService.mainApp.status == .requiresApproval
+        }
+        #endif
+        return false
+    }
+
+    func setupInitialState() {
+        #if canImport(ServiceManagement)
+        if #available(macOS 13.0, *) {
+            let explicitlyDisabled = UserDefaults.standard.bool(forKey: Self.explicitlyDisabledKey)
+            if !explicitlyDisabled && SMAppService.mainApp.status == .notRegistered {
+                try? SMAppService.mainApp.register()
+            }
+        }
+        #endif
+    }
+}
+
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let monitor = QuotaMonitor()
     let updateController = UpdateController()
@@ -34,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateController.onAvailabilityChange = { [weak self] isAvailable in
             self?.updateMenuBarIcon(updateAvailable: isAvailable)
         }
-        enableLaunchAtLogin()
+        LaunchAtLogin.shared.setupInitialState()
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(workspaceDidWake),
@@ -42,14 +103,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
         monitor.start()
-    }
-
-    private func enableLaunchAtLogin() {
-        #if canImport(ServiceManagement)
-        if #available(macOS 13.0, *), SMAppService.mainApp.status == .notRegistered {
-            try? SMAppService.mainApp.register()
-        }
-        #endif
     }
 
     func applicationWillTerminate(_ notification: Notification) {

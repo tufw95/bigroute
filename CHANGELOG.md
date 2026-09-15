@@ -4,6 +4,27 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.7] - 2026-09-15
+
+### Added
+
+- **Launch at Login ("Khởi động cùng macOS")**:
+  - Added a "Launch Bigroute at login" toggle in Settings under a new "General" section (enabled by default).
+  - Automatically manages background registration with `SMAppService.mainApp` while respecting explicit user disablement.
+- **Auto-Update Toggles in Settings**:
+  - Added "Automatically check for updates" and "Automatically download and install updates" toggles in Settings > Updates.
+  - Automatically runs a background update check upon application launch so new versions are immediately discovered.
+  - Enabled scheduled update alerts for background menu bar operation so notifications pop up when updates are ready.
+
+### Fixed
+
+- **Persistent Keychain Permissions Across Updates**:
+  - Upgraded generic password items in Keychain Services with an open application `SecAccess` access control list.
+  - Fixes repeated macOS Keychain prompts ("Bigroute wants to use your confidential information stored in your keychain") following every update.
+- **Multi-Version Appcast Feed**:
+  - Updated Sparkle appcast generation to preserve historical releases (up to 10 versions) in `appcast.xml`.
+  - Fixes step-by-step single-version updates, ensuring clients jump directly to the latest available release.
+
 ## [1.7.6] - 2026-09-15
 
 ### Fixed

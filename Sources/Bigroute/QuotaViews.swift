@@ -663,6 +663,21 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            Section("General") {
+                Toggle("Launch Bigroute at login", isOn: Binding(
+                    get: { LaunchAtLogin.shared.isEnabled },
+                    set: { LaunchAtLogin.shared.isEnabled = $0 }
+                ))
+                if LaunchAtLogin.shared.requiresApproval {
+                    Text("Requires approval in System Settings > General > Login Items.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else {
+                    Text("Automatically opens Bigroute in your menu bar on login.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Section {
                 if monitor.configuration.providers.isEmpty {
                     Text("Add a provider to start tracking quota.")
@@ -801,8 +816,18 @@ struct SettingsView: View {
 
             Section("Updates") {
                 LabeledContent("Installed version", value: versionDescription)
+                Toggle("Automatically check for updates", isOn: Binding(
+                    get: { updateController.automaticallyChecksForUpdates },
+                    set: { updateController.automaticallyChecksForUpdates = $0 }
+                ))
+                Toggle("Automatically download and install updates", isOn: Binding(
+                    get: { updateController.automaticallyDownloadsUpdates },
+                    set: { updateController.automaticallyDownloadsUpdates = $0 }
+                ))
+                .disabled(!updateController.automaticallyChecksForUpdates)
+
                 HStack {
-                    Text("Bigroute checks for signed updates hourly. Use Check for Updates to view download or installation progress.")
+                    Text("Bigroute checks for signed updates periodically. Use Check for Updates to manually check now.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()

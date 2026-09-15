@@ -11,6 +11,16 @@ final class UpdateController: NSObject, @preconcurrency SPUStandardUserDriverDel
     private(set) var canCheckForUpdates = false
     private(set) var lastError: String?
 
+    var automaticallyChecksForUpdates: Bool {
+        get { controller.updater.automaticallyChecksForUpdates }
+        set { controller.updater.automaticallyChecksForUpdates = newValue }
+    }
+
+    var automaticallyDownloadsUpdates: Bool {
+        get { controller.updater.automaticallyDownloadsUpdates }
+        set { controller.updater.automaticallyDownloadsUpdates = newValue }
+    }
+
     @ObservationIgnored var onAvailabilityChange: ((Bool) -> Void)?
     @ObservationIgnored private var availabilityObservation: NSKeyValueObservation?
     @ObservationIgnored private lazy var controller = SPUStandardUpdaterController(
@@ -27,6 +37,9 @@ final class UpdateController: NSObject, @preconcurrency SPUStandardUserDriverDel
             availabilityObservation = controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] _, change in
                 let available = change.newValue ?? false
                 Task { @MainActor [weak self] in self?.canCheckForUpdates = available }
+            }
+            if controller.updater.automaticallyChecksForUpdates {
+                controller.updater.checkForUpdatesInBackground()
             }
         } catch {
             lastError = error.localizedDescription
@@ -73,7 +86,7 @@ final class UpdateController: NSObject, @preconcurrency SPUStandardUserDriverDel
     func standardUserDriverShouldHandleShowingScheduledUpdate(
         _ update: SUAppcastItem,
         andInImmediateFocus immediateFocus: Bool
-    ) -> Bool { immediateFocus }
+    ) -> Bool { true }
 
     func standardUserDriverWillHandleShowingUpdate(
         _ handleShowingUpdate: Bool,

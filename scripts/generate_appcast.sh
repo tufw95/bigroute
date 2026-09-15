@@ -43,6 +43,9 @@ fi
 tar -xJf "$sparkle_archive" -C "$tools_dir"
 
 cp "$ZIP_PATH" "$archives_dir/$ZIP_NAME"
+if [[ -f "$APPCAST_PATH" ]]; then
+  cp "$APPCAST_PATH" "$archives_dir/appcast.xml"
+fi
 notes_path="$archives_dir/Bigroute-$VERSION.md"
 generation_log="$tools_dir/generate-appcast.log"
 awk -v heading="## [$VERSION]" '
@@ -58,7 +61,7 @@ if ! "$tools_dir/bin/generate_appcast" \
   --full-release-notes-url "https://github.com/$REPOSITORY/releases/tag/$TAG" \
   --link "https://github.com/$REPOSITORY" \
   --embed-release-notes \
-  --maximum-versions 1 \
+  --maximum-versions 10 \
   --maximum-deltas 0 \
   -o "$APPCAST_PATH" \
   "$archives_dir" 2>&1 | tee "$generation_log"; then
