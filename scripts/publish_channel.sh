@@ -61,14 +61,14 @@ for feed_url in \
   "https://raw.githubusercontent.com/$REPOSITORY/ota-feeds/$CHANNEL/appcast.xml" \
   "https://github.com/$REPOSITORY/releases/download/$channel_tag/appcast.xml"; do
   verified=false
-  for attempt in 1 2 3 4 5; do
+  for attempt in {1..15}; do
     if curl --fail --silent --show-error --location --max-time 20 \
       "$feed_url?check=$(uuidgen)" --output "$feed_checkout/downloaded.xml" \
       && cmp -s "$APPCAST_PATH" "$feed_checkout/downloaded.xml"; then
       verified=true
       break
     fi
-    sleep 2
+    sleep 3
   done
   if [[ "$verified" != true ]]; then
     echo "The public $CHANNEL feed does not yet match the signed release: $feed_url" >&2
