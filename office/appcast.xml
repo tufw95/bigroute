@@ -6,6 +6,31 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Bigroute</title>
         <item>
+            <title>1.7.9</title>
+            <pubDate>Tue, 15 Sep 2026 04:36:08 +0000</pubDate>
+            <link>https://github.com/tufw95/bigroute</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.9</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1007009</sparkle:version>
+            <sparkle:shortVersionString>1.7.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[
+### Fixed
+
+- **UI & Tooltip Polishing**:
+  - Corrected tooltip copy on the inactive accounts visibility toggle.
+  - Synchronized empty state instructions to refer to the "Enable All" action.
+- **Deep Link Navigation**:
+  - Fixed `bigroute://settings` URL scheme handler to open the Settings window rather than re-triggering the menu-bar popover.
+- **Safety & Robustness**:
+  - Removed force unwrapping on account identifier parsing in manual routing to prevent runtime panics.
+  - Improved Provider Editor sheet workflow so saving valid credentials cleanly updates configuration and dismisses without stale error interference.
+- **Performance**:
+  - Reused static relative date time formatter to minimize allocations and reduce rendering overhead on macOS.
+
+]]></description>
+            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.9/Bigroute-1.7.9.zip" length="3481556" type="application/octet-stream" sparkle:edSignature="rO7dCdPKXBC1LuPKS+zi07qTMFWftOPVOmdZgqvepHenKcV4PPuf5JBpdcKvOGuoB7IUz67F32/lqcO9dZX7BA=="/>
+        </item>
+        <item>
             <title>1.7.8</title>
             <pubDate>Tue, 15 Sep 2026 03:49:10 +0000</pubDate>
             <link>https://github.com/tufw95/bigroute</link>
@@ -79,6 +104,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: XrZ4KHZzfcuTaleyAB6wVn36+xFzbiAqFRFBEtYyMBbGAkpaltL+y/0JsF0SIAs77WzElSczo8JHKDcl9b1PBA==
-length: 5523
+edSignature: ESYr3pXrNQ1ITiH8pB/XaZIxdgUElsCuhCNxck6wnd4ckvphyuOLOIKLv9qRu8s0HWRgeN4NxBQap8GXEjJSAw==
+length: 7167
 -->
