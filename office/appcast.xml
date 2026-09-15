@@ -6,6 +6,27 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Bigroute</title>
         <item>
+            <title>1.7.8</title>
+            <pubDate>Tue, 15 Sep 2026 03:49:10 +0000</pubDate>
+            <link>https://github.com/tufw95/bigroute</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.8</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1007008</sparkle:version>
+            <sparkle:shortVersionString>1.7.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[
+### Fixed
+
+- **Keychain Permission Prompts**:
+  - Removed internal Keychain ACL modification calls that triggered repeated macOS security dialogs ("Bigroute wants to change access permissions of the item in your keychain").
+  - Restored quiet, standard Keychain read and write operations.
+- **Quota Error Clarity**:
+  - Added dedicated `missingAPIKey` error detection when Management Secret Key is empty or unavailable.
+  - Clarified HTTP 404 response messaging to prompt users to verify their endpoint URL and Management Secret Key in Settings.
+
+]]></description>
+            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.8/Bigroute-1.7.8.zip" length="3481400" type="application/octet-stream" sparkle:edSignature="q93g353jNq3PLjWBNRVonE5FZDLR/b+vyH2M1sn1v+OACM5te9eF8S70tb3L/BwO5/AT+SmMkZr5V9qYnrA2CA=="/>
+        </item>
+        <item>
             <title>1.7.7</title>
             <pubDate>Tue, 15 Sep 2026 03:22:23 +0000</pubDate>
             <link>https://github.com/tufw95/bigroute</link>
@@ -58,6 +79,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: 9V+VyPQL6aklnP6tSuTaMd+GbwNS7dPmCAJ/KCULfP1I/JPLNmOj6YjZA9XmFca5Lque8R1huhv8gy1Hl4TxDQ==
-length: 4090
+edSignature: XrZ4KHZzfcuTaleyAB6wVn36+xFzbiAqFRFBEtYyMBbGAkpaltL+y/0JsF0SIAs77WzElSczo8JHKDcl9b1PBA==
+length: 5523
 -->
