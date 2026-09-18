@@ -6,6 +6,30 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Bigroute</title>
         <item>
+            <title>1.7.10</title>
+            <pubDate>Fri, 18 Sep 2026 02:47:14 +0000</pubDate>
+            <link>https://github.com/tufw95/bigroute</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.10</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1007010</sparkle:version>
+            <sparkle:shortVersionString>1.7.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[
+### Fixed
+
+- Restore Bridge after Antigravity 2.14.0 updates without depending on `npx`, a shell PATH, or npm downloads in the macOS app process.
+- Hash the ASAR JSON header for Electron integrity, preserve packed/unpacked files and nested vendor signatures, verify a staged app before replacement, and retain the previous complete bundle for rollback.
+- Report patch failures instead of silently starting a healthy proxy that Antigravity cannot use. Run isolated patcher regression tests in CI without touching an installed Antigravity app.
+
+### Antigravity update compatibility
+
+- Verified with Antigravity 2.14.0, including real synchronous and streamed generation through CLI Proxy API.
+- After updating Antigravity, use Bigroute Settings → Antigravity Bridge → **Apply & Restart Antigravity** to reapply the patch and restart the language server. Bigroute also checks the patch when starting with Bridge enabled; startup does not restart Antigravity automatically.
+- Future Antigravity versions can change the launcher or API and still require a Bigroute update. This release does not claim a fix for the previously reported phone Remote Control issue.
+
+]]></description>
+            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.10/Bigroute-1.7.10.zip" length="3483157" type="application/octet-stream" sparkle:edSignature="2hHylioo8Wyw8J0B+T7ky90c1e+7KNAyMQ6bZzZNims+FCWt70bM82ygZfPkBHJQNoOKD0TU/LrqeErekjkTDA=="/>
+        </item>
+        <item>
             <title>1.7.9</title>
             <pubDate>Tue, 15 Sep 2026 04:36:08 +0000</pubDate>
             <link>https://github.com/tufw95/bigroute</link>
@@ -104,6 +128,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: ESYr3pXrNQ1ITiH8pB/XaZIxdgUElsCuhCNxck6wnd4ckvphyuOLOIKLv9qRu8s0HWRgeN4NxBQap8GXEjJSAw==
-length: 7167
+edSignature: SHE3AZ9d1XVZBhqafkMseFEYgLaRfloMlEESyW4/uWOeEUyTD7npgMcm6FZ+Y5uk3GuArUDIePM4oj0p2A/UBg==
+length: 9221
 -->
