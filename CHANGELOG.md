@@ -4,6 +4,20 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.10] - 2026-09-18
+
+### Fixed
+
+- Restore Bridge after Antigravity 2.14.0 updates without depending on `npx`, a shell PATH, or npm downloads in the macOS app process.
+- Hash the ASAR JSON header for Electron integrity, preserve packed/unpacked files and nested vendor signatures, verify a staged app before replacement, and retain the previous complete bundle for rollback.
+- Report patch failures instead of silently starting a healthy proxy that Antigravity cannot use. Run isolated patcher regression tests in CI without touching an installed Antigravity app.
+
+### Antigravity update compatibility
+
+- Verified with Antigravity 2.14.0, including real synchronous and streamed generation through CLI Proxy API.
+- After updating Antigravity, use Bigroute Settings → Antigravity Bridge → **Apply & Restart Antigravity** to reapply the patch and restart the language server. Bigroute also checks the patch when starting with Bridge enabled; startup does not restart Antigravity automatically.
+- Future Antigravity versions can change the launcher or API and still require a Bigroute update. This release does not claim a fix for the previously reported phone Remote Control issue.
+
 ## [1.7.9] - 2026-09-15
 
 ### Fixed
@@ -431,7 +445,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Persistent internal code signing to keep Keychain access stable across office updates.
 - Separate fixed Sparkle feeds for office and future Developer ID release channels.
 
-[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.5.3...HEAD
+[Unreleased]: https://github.com/tufw95/bigroute/compare/office-v1.7.10...HEAD
+[1.7.10]: https://github.com/tufw95/bigroute/releases/tag/office-v1.7.10
 [1.4.13]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.13
 [1.4.12]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.12
 [1.4.11]: https://github.com/tufw95/bigroute/releases/tag/office-v1.4.11

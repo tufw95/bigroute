@@ -69,7 +69,7 @@ jobs:
       - name: Run tests
         run: |
           swift test
-          node --test Tests/antigravity-bridge-proxy.test.mjs
+          node --test Tests/antigravity-*.test.mjs
           python3 Tests/publish-channel.test.py
 
       - name: Restore office signing material

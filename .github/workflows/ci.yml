@@ -35,7 +35,7 @@ jobs:
         run: swift test
 
       - name: Run Antigravity bridge tests
-        run: node --test Tests/antigravity-bridge-proxy.test.mjs
+        run: node --test Tests/antigravity-*.test.mjs
 
       - name: Test OTA channel publication
         run: python3 Tests/publish-channel.test.py

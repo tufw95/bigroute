@@ -8,7 +8,7 @@ A native macOS menu bar app for monitoring 9Router and OmniRouter account quotas
 
 Download the DMG from the [latest release](https://github.com/tufw95/bigroute/releases/latest), then drag Bigroute into Applications. Existing installations can use **Check for Updates…**. Office builds use a persistent internal signing certificate and signed Sparkle updates; they are not Apple notarized. macOS may require **Privacy & Security → Open Anyway** on first installation.
 
-The 1.6.0 source upgrade is being validated. **The phone Remote Control conversation-switching issue remains unresolved; 1.6.0 has not been released for team OTA.** See [audit findings and release gate](docs/audit-1.6.0.md).
+Version 1.7.10 restores the CLI Proxy API Bridge after Antigravity 2.14.0 updates. The previously reported phone Remote Control conversation-switching issue is not covered by this fix; see the [historical audit findings](docs/audit-1.6.0.md).
 
 ## Providers and quotas
 
@@ -30,9 +30,11 @@ The optional Bridge requires Node.js 20 or later and an enabled provider explici
 
 The local listener binds to `127.0.0.1:50999`. It translates generation between Antigravity's Cloud Code format and 9Router's chat-completions format, including streamed text, images, reasoning, and function calls. Unsupported media and malformed upstream results produce errors rather than silently losing input. Non-generation traffic is forwarded to Google's upstream; custom model discovery retains other response fields.
 
-**Compatibility is conditional.** The inspected official Antigravity 2.12.2 package hardcodes its Cloud Code endpoint. The installed modified package reads `~/.gemini/antigravity/cloud_code_endpoint.txt`. Bigroute manages that file and checks the endpoint used by the running language server; it does not modify Antigravity's signed application bundle. A future Antigravity update may remove endpoint support. Do not assume that a healthy local proxy proves that Antigravity is using it or that phone remote works.
+**Compatibility is conditional.** Official Antigravity 2.14.0 hardcodes its Cloud Code endpoint. Bigroute patches `dist/languageServer.js` in its ASAR to read `~/.gemini/antigravity/cloud_code_endpoint.txt`, updates Electron's header integrity hash, and locally re-signs the outer app while preserving the vendor-signed nested components. This does modify Antigravity's signed bundle; the modified outer app has an ad-hoc signature, not Google's signature. The repair requires Node.js but no `npx`, npm download, or shell PATH. It stages and verifies the replacement before installing it, and retains the complete previous bundle under `/Applications/.bigroute-antigravity-*/Original.app` for rollback. Unknown launcher formats and repair failures are reported. Future Antigravity releases can still require maintenance. A healthy local proxy alone does not prove that Antigravity is using it or that phone remote works.
 
 Toggling Bridge or pressing **Apply & Restart Antigravity** requests a graceful Antigravity restart. Bigroute startup and OTA do not restart Antigravity. Turning Bridge off restores the previously saved endpoint, or removes the override so Antigravity can choose its default.
+
+After installing an Antigravity update, open Bigroute Settings → Antigravity Bridge and press **Apply & Restart Antigravity**. This reapplies the patch and launches the updated language server through Bridge. Starting Bigroute with Bridge enabled also checks and repairs the patch, but an already-running Antigravity still needs a restart. Compatibility is verified with Antigravity 2.14.0; future launcher or API changes may require another Bigroute update.
 
 **Keep Official Models** retains the discovered catalogue and maps unprefixed model IDs to `ag/<model>`. **Custom Models** accepts provider-prefixed IDs. This mode depends on Antigravity's internal model schema; it is more sensitive to vendor changes. The Bridge's model availability values keep router routes selectable; they are not measured Google or 9Router account quotas. Use Bigroute's quota dashboard for actual provider measurements. Model capabilities and context limits depend on the chosen upstream model.
 
@@ -47,6 +49,7 @@ Requires full Xcode, Swift 6, and Node.js 20+ for Bridge tests.
 ```bash
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 node --test Tests/antigravity-bridge-proxy.test.mjs
+node --test Tests/antigravity-asar-patcher.test.mjs
 python3 Tests/publish-channel.test.py
 ./scripts/verify_monitoring_only.sh
 ./script/build_and_run.sh
@@ -56,7 +59,7 @@ The development script launches from DerivedData. It does not replace the signed
 
 ## Office OTA release
 
-After the release gate is satisfied, date the matching changelog entry, push the commit to `main`, and wait for CI. Push `office-v<version>` at that exact commit to run **Office Release**. The workflow builds a universal app, checks the pinned signing identity, verifies Sparkle signatures and archive metadata, and publishes the numbered release.
+Date the matching changelog entry, document any remaining compatibility limits, push the commit to `main`, and wait for CI. Push `office-v<version>` at that exact commit to run **Office Release**. The workflow builds a universal app, checks the pinned signing identity, verifies Sparkle signatures and archive metadata, and publishes the numbered release.
 
 Protected `office-release` environment secrets:
 

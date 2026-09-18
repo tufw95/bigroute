@@ -272,8 +272,7 @@ public actor AntigravityBridgeManager {
     }
 
     private func launchProxy() async throws -> Bool {
-        _ = try? ensurePatcherScriptInstalled()
-        _ = try? await patchAntigravityIfNeeded()
+        _ = try await patchAntigravityIfNeeded()
         let scriptUpdated = try ensureBridgeScriptInstalled()
         let scriptHash = SHA256.hash(data: try Data(contentsOf: proxyScriptURL)).map { String(format: "%02x", $0) }.joined()
         Self.logger.info("Starting Antigravity bridge proxy; scriptUpdated=\(scriptUpdated, privacy: .public)")
@@ -321,7 +320,6 @@ public actor AntigravityBridgeManager {
 
     public func restoreBridgeForStartup() async throws {
         // A Bigroute OTA/relaunch must never terminate the remote user's IDE.
-        _ = try? await patchAntigravityIfNeeded()
         _ = try await startProxy()
     }
 
@@ -357,7 +355,7 @@ public actor AntigravityBridgeManager {
         guard endpoints.count == pids.count, endpoints.allSatisfy(Self.isBridgeEndpoint) else {
             let patchStatus = await checkAntigravityPatchStatus()
             if patchStatus.appExists && !patchStatus.isPatched {
-                _ = try? await patchAntigravityIfNeeded()
+                _ = try await patchAntigravityIfNeeded()
                 throw BridgeError("Antigravity was updated. Bigroute has automatically re-applied the bridge patch. Please restart Antigravity to apply.")
             }
             throw BridgeError("Antigravity is using its official endpoint. Relaunch Antigravity to apply the bridge settings.")
@@ -401,6 +399,9 @@ public actor AntigravityBridgeManager {
 
     @MainActor
     public func relaunchAntigravityApp() async throws {
+        if isCurrentlyPointedToBridge {
+            _ = try await patchAntigravityIfNeeded()
+        }
         let appURL = URL(fileURLWithPath: "/Applications/Antigravity.app")
         let running = NSWorkspace.shared.runningApplications.filter { $0.bundleURL?.standardizedFileURL == appURL }
         for app in running {
@@ -413,7 +414,6 @@ public actor AntigravityBridgeManager {
         guard running.allSatisfy(\.isTerminated) else {
             throw BridgeError("Antigravity is still closing. Save your work and restart it to apply the bridge settings.")
         }
-        _ = try? await patchAntigravityIfNeeded()
         let options = NSWorkspace.OpenConfiguration()
         _ = try await NSWorkspace.shared.openApplication(at: appURL, configuration: options)
     }
@@ -431,7 +431,6 @@ public actor AntigravityBridgeManager {
         if let startTask { _ = try? await startTask.value }
         if enabled {
             try await saveBridgeConfig(nineRouterUrl: nineRouterUrl, apiKey: apiKey, modelMode: modelMode, customModelsText: customModelsText)
-            _ = try? await patchAntigravityIfNeeded()
             try await startProxy()
         } else {
             try restoreOfficialEndpoint()
