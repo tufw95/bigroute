@@ -6,6 +6,25 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Bigroute</title>
         <item>
+            <title>1.7.11</title>
+            <pubDate>Fri, 18 Sep 2026 08:21:40 +0000</pubDate>
+            <link>https://github.com/tufw95/bigroute</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.11</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1007011</sparkle:version>
+            <sparkle:shortVersionString>1.7.11</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[
+### Fixed
+
+- **Bridge Payload Size Limit Removal**:
+  - Increased `MAX_BODY_BYTES` in the Antigravity Bridge proxy from 32 MB to 512 MB (`buffer.constants.MAX_STRING_LENGTH`), eliminating the artificial "Bridge payload exceeds the size limit" (HTTP 400) error on long sessions, large codebases, deep trajectory histories, and base64 images.
+  - Made maximum body size customizable via the `AG_PROXY_MAX_BODY_BYTES` environment variable.
+  - Extended bridge server `requestTimeout` from 120s to 300s to smoothly accommodate massive multi-megabyte payloads.
+
+]]></description>
+            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.11/Bigroute-1.7.11.zip" length="3483228" type="application/octet-stream" sparkle:edSignature="oZCiVMOK6p9dd0wyJcd39nQExOGuEOEqAWJjdzWL9Tr+ZXUSe4ku85hZfZRCl63NStQBKc3HGtRTKJNrE42YBQ=="/>
+        </item>
+        <item>
             <title>1.7.10</title>
             <pubDate>Fri, 18 Sep 2026 02:47:14 +0000</pubDate>
             <link>https://github.com/tufw95/bigroute</link>
@@ -128,6 +147,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: SHE3AZ9d1XVZBhqafkMseFEYgLaRfloMlEESyW4/uWOeEUyTD7npgMcm6FZ+Y5uk3GuArUDIePM4oj0p2A/UBg==
-length: 9221
+edSignature: 7EIqB+/xPXnL+eMyhyLtt+q7vMGO3R5pgEsmaVIgvsRJ7tMNXdQ8TR/PwEjA+O57HIjD9dJwxzZKgfhHKxM+CA==
+length: 10669
 -->
