@@ -4,6 +4,15 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.11] - 2026-09-18
+
+### Fixed
+
+- **Bridge Payload Size Limit Removal**:
+  - Increased `MAX_BODY_BYTES` in the Antigravity Bridge proxy from 32 MB to 512 MB (`buffer.constants.MAX_STRING_LENGTH`), eliminating the artificial "Bridge payload exceeds the size limit" (HTTP 400) error on long sessions, large codebases, deep trajectory histories, and base64 images.
+  - Made maximum body size customizable via the `AG_PROXY_MAX_BODY_BYTES` environment variable.
+  - Extended bridge server `requestTimeout` from 120s to 300s to smoothly accommodate massive multi-megabyte payloads.
+
 ## [1.7.10] - 2026-09-18
 
 ### Fixed

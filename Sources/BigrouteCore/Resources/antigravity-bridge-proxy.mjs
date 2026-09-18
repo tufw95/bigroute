@@ -17,6 +17,7 @@ import { createHash } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { StringDecoder } from 'node:string_decoder';
 import { gunzipSync, inflateSync, brotliDecompressSync } from 'node:zlib';
+import { constants as bufferConstants } from 'node:buffer';
 
 const PORT = Number.parseInt(process.env.AG_PROXY_PORT || '50999', 10);
 const HOST = '127.0.0.1';
@@ -24,7 +25,8 @@ const GOOGLE_UPSTREAM = 'https://daily-cloudcode-pa.googleapis.com';
 const CONFIG_PATH = path.join(os.homedir(), '.gemini', 'antigravity', 'bridge_config.json');
 const LOG_PATH = process.env.AG_PROXY_LOG || path.join(path.dirname(CONFIG_PATH), 'bridge-proxy', 'bridge.log');
 const SCRIPT_HASH = createHash('sha256').update(fs.readFileSync(fileURLToPath(import.meta.url))).digest('hex');
-const MAX_BODY_BYTES = 32 * 1024 * 1024;
+const DEFAULT_MAX_BODY_BYTES = bufferConstants?.MAX_STRING_LENGTH || (512 * 1024 * 1024);
+const MAX_BODY_BYTES = Number.parseInt(process.env.AG_PROXY_MAX_BODY_BYTES || '', 10) || DEFAULT_MAX_BODY_BYTES;
 
 const dnsCache = new Map();
 
@@ -842,7 +844,7 @@ function createBridgeServer({ googleUpstream = GOOGLE_UPSTREAM, configProvider =
       }
     }
   });
-  server.requestTimeout = 120_000;
+  server.requestTimeout = 300_000;
   server.headersTimeout = 60_000;
   server.keepAliveTimeout = 5_000;
   return server;
