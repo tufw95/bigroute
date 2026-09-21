@@ -6,6 +6,23 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Bigroute</title>
         <item>
+            <title>1.7.13</title>
+            <pubDate>Mon, 21 Sep 2026 03:10:41 +0000</pubDate>
+            <link>https://github.com/tufw95/bigroute</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.13</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1007013</sparkle:version>
+            <sparkle:shortVersionString>1.7.13</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[
+### Fixed
+
+- **Settings (Proxy) UI Indicator in Sandboxed Renderer**:
+  - Replaced Node.js filesystem dependency in `dist/preload.js` with pure DOM manipulation resilient to Electron's renderer sandbox (`--enable-sandbox`), ensuring the bottom-left **Settings** button and hover tooltips immediately display as **Settings (Proxy)** when routed through Bigroute Bridge.
+
+]]></description>
+            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.13/Bigroute-1.7.13.zip" length="3497079" type="application/octet-stream" sparkle:edSignature="H9ztyBOF7lAShPkH7jwhdpULBLrdT734N8Y5Gooze4iQeoDaSLxY+BHzyz03KWWqM6EcSpDboUcLbVro4wpeBQ=="/>
+        </item>
+        <item>
             <title>1.7.12</title>
             <pubDate>Mon, 21 Sep 2026 02:50:43 +0000</pubDate>
             <link>https://github.com/tufw95/bigroute</link>
@@ -170,6 +187,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: hDmeycaS9lY73c5T1S7f10+gP0NGUoGL6LuzcYfx75cz1nTAzfYzj4S+TaEQST39l9tHMYO794IgTOhbowHoDw==
-length: 12430
+edSignature: A2jCL1JTOWFmuhd0orjUWH0AQFCUTmnUq4B/JzLrv96zH2mmbuFDLkbeFwYGJBwIqKR7UBnGEXwunVXxaqtjBA==
+length: 13691
 -->
