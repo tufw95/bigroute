@@ -4,6 +4,19 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.12] - 2026-09-21
+
+### Fixed
+
+- **Automatic Bridge Recovery After Antigravity Updates**:
+  - Automatically detect when Antigravity updates and relaunches unpatched (`NSWorkspace.didLaunchApplicationNotification`). Bigroute immediately re-applies the ASAR patch and relaunches Antigravity with the bridge active, eliminating the need to manually toggle the bridge off and on.
+  - Background periodic refresh cycles also verify and repair the ASAR patch on disk so that subsequent restarts always connect to the bridge.
+
+### Added
+
+- **Visual Bridge Indicator in Antigravity UI**:
+  - The ASAR patcher now automatically injects a UI indicator into `dist/preload.js`. When Bigroute Bridge is active, the bottom-left **Settings** button and hover tooltips dynamically display as **Settings (Proxy)**, providing clear, real-time confirmation that the window is routed through Bigroute Bridge.
+
 ## [1.7.11] - 2026-09-18
 
 ### Fixed

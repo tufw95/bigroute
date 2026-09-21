@@ -6,6 +6,77 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const PATCH_CODE = "(() => { try { const os = require('os'); const fs = require('fs'); const ep = fs.readFileSync(require('path').join(os.homedir(), '.gemini', 'antigravity', 'cloud_code_endpoint.txt'), 'utf8').trim(); if (ep) return ep; } catch (e) {} return process.env.ANTIGRAVITY_CLOUD_CODE_ENDPOINT || 'https://daily-cloudcode-pa.googleapis.com'; })()";
+export const PRELOAD_PATCH_MARKER = '/* BIGROUTE_PRELOAD_BRIDGE_INDICATOR */';
+const PRELOAD_PATCH_CODE = `${PRELOAD_PATCH_MARKER}
+(() => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const epPath = path.join(os.homedir(), '.gemini', 'antigravity', 'cloud_code_endpoint.txt');
+
+    function isBridgeEndpointActive() {
+      try {
+        if (!fs.existsSync(epPath)) return false;
+        const ep = fs.readFileSync(epPath, 'utf8').trim();
+        return ep.includes('127.0.0.1:50999') || ep.includes('localhost:50999');
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function applyIndicator() {
+      const active = isBridgeEndpointActive();
+      const settingsBtn = document.querySelector('[data-testid="settings-button"], button[aria-label="Settings"], button[aria-label="Settings (Proxy)"]');
+      if (settingsBtn) {
+        const spans = settingsBtn.querySelectorAll('span');
+        for (const span of spans) {
+          const text = (span.textContent || '').trim();
+          if (active && text === 'Settings') {
+            span.textContent = 'Settings (Proxy)';
+          } else if (!active && text === 'Settings (Proxy)') {
+            span.textContent = 'Settings';
+          }
+        }
+        if (active) {
+          if (settingsBtn.getAttribute('aria-label') === 'Settings') {
+            settingsBtn.setAttribute('aria-label', 'Settings (Proxy)');
+          }
+          if (settingsBtn.getAttribute('title') === 'Settings') {
+            settingsBtn.setAttribute('title', 'Settings (Proxy)');
+          }
+        } else {
+          if (settingsBtn.getAttribute('aria-label') === 'Settings (Proxy)') {
+            settingsBtn.setAttribute('aria-label', 'Settings');
+          }
+          if (settingsBtn.getAttribute('title') === 'Settings (Proxy)') {
+            settingsBtn.setAttribute('title', 'Settings');
+          }
+        }
+      }
+
+      const tooltips = document.querySelectorAll('[role="tooltip"], [data-tooltip]');
+      for (const tt of tooltips) {
+        const text = (tt.textContent || '').trim();
+        if (active && text === 'Settings') {
+          tt.textContent = 'Settings (Proxy)';
+        } else if (!active && text === 'Settings (Proxy)') {
+          tt.textContent = 'Settings';
+        }
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', applyIndicator);
+    } else {
+      applyIndicator();
+    }
+
+    const observer = new MutationObserver(applyIndicator);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (err) {}
+})();
+`;
 const GOOGLE_DESIGNATED_REQUIREMENT = 'designated => anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = EQHXZ8M8AV';
 const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
 const run = (command, args) => execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120_000 });
@@ -19,7 +90,7 @@ export function getAppPaths(customAppPath) {
 }
 
 // ASAR uses two Chromium Pickles: a header size, followed by a JSON string.
-// Edit only the packed launcher. Preserve every other file, link, unpacked flag
+// Edit only the packed launcher and preload script. Preserve every other file, link, unpacked flag
 // and integrity record, without npm, network access or shell PATH dependencies.
 export function readArchive(buffer) {
   if (buffer.length < 16 || buffer.readUInt32LE(0) !== 4) throw new Error('Invalid ASAR size header');
@@ -48,6 +119,19 @@ function launcherFromArchive(archive) {
   return { entry, content };
 }
 
+function preloadFromArchive(archive) {
+  const entry = archive.header.files?.dist?.files?.['preload.js'];
+  if (!entry || entry.unpacked || entry.link || entry.files) return null;
+  const offset = Number(entry.offset);
+  if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(entry.size)
+      || entry.size < 0 || offset + entry.size > archive.payload.length) return null;
+  const content = archive.payload.subarray(offset, offset + entry.size);
+  if (entry.integrity && (entry.integrity.algorithm !== 'SHA256' || entry.integrity.hash !== sha256(content))) {
+    throw new Error('preload.js integrity check failed');
+  }
+  return { entry, content };
+}
+
 function encodeArchive(header, payload) {
   const json = Buffer.from(JSON.stringify(header));
   const headerSize = 8 + Math.ceil(json.length / 4) * 4;
@@ -62,22 +146,50 @@ function encodeArchive(header, payload) {
 
 export function patchArchive(buffer) {
   const archive = readArchive(buffer);
-  const { entry, content } = launcherFromArchive(archive);
-  const source = content.toString('utf8');
-  if (source.includes(PATCH_CODE)) return { buffer, hash: archive.headerHash, alreadyPatched: true };
-  const target = /(['"])--cloud_code_endpoint\1\s*,\s*(['"])https:\/\/daily-cloudcode-pa\.googleapis\.com\2/g;
-  const matches = [...source.matchAll(target)];
-  if (matches.length !== 1) throw new Error('Expected one Cloud Code endpoint argument in languageServer.js; this Antigravity version is not supported');
-  const updated = Buffer.from(source.replace(target, match => match.slice(0, match.lastIndexOf(matches[0][2] + 'https://')) + PATCH_CODE));
-  const blockSize = entry.integrity?.blockSize ?? 4 * 1024 * 1024;
-  if (!Number.isSafeInteger(blockSize) || blockSize <= 0) throw new Error('Invalid ASAR integrity block size');
-  const blocks = [];
-  for (let offset = 0; offset < updated.length; offset += blockSize) blocks.push(sha256(updated.subarray(offset, offset + blockSize)));
-  // Appending the replacement keeps all other offsets and packed bytes intact.
-  entry.offset = String(archive.payload.length);
-  entry.size = updated.length;
-  entry.integrity = { algorithm: 'SHA256', hash: sha256(updated), blockSize, blocks };
-  const patched = encodeArchive(archive.header, Buffer.concat([archive.payload, updated]));
+  const { entry: lsEntry, content: lsContent } = launcherFromArchive(archive);
+  const lsSource = lsContent.toString('utf8');
+  const lsNeedsPatch = !lsSource.includes(PATCH_CODE);
+
+  const preloadInfo = preloadFromArchive(archive);
+  const preloadNeedsPatch = preloadInfo !== null && !preloadInfo.content.toString('utf8').includes(PRELOAD_PATCH_MARKER);
+
+  if (!lsNeedsPatch && !preloadNeedsPatch) {
+    return { buffer, hash: archive.headerHash, alreadyPatched: true };
+  }
+
+  const appends = [];
+  let currentOffset = archive.payload.length;
+
+  if (lsNeedsPatch) {
+    const target = /(['\"])--cloud_code_endpoint\1\s*,\s*(['\"])https:\/\/daily-cloudcode-pa\.googleapis\.com\2/g;
+    const matches = [...lsSource.matchAll(target)];
+    if (matches.length !== 1) throw new Error('Expected one Cloud Code endpoint argument in languageServer.js; this Antigravity version is not supported');
+    const updatedLs = Buffer.from(lsSource.replace(target, match => match.slice(0, match.lastIndexOf(matches[0][2] + 'https://')) + PATCH_CODE));
+    const blockSize = lsEntry.integrity?.blockSize ?? 4 * 1024 * 1024;
+    if (!Number.isSafeInteger(blockSize) || blockSize <= 0) throw new Error('Invalid ASAR integrity block size');
+    const blocks = [];
+    for (let offset = 0; offset < updatedLs.length; offset += blockSize) blocks.push(sha256(updatedLs.subarray(offset, offset + blockSize)));
+    lsEntry.offset = String(currentOffset);
+    lsEntry.size = updatedLs.length;
+    lsEntry.integrity = { algorithm: 'SHA256', hash: sha256(updatedLs), blockSize, blocks };
+    appends.push(updatedLs);
+    currentOffset += updatedLs.length;
+  }
+
+  if (preloadNeedsPatch && preloadInfo) {
+    const updatedPreload = Buffer.from(preloadInfo.content.toString('utf8') + '\n' + PRELOAD_PATCH_CODE);
+    const blockSize = preloadInfo.entry.integrity?.blockSize ?? 4 * 1024 * 1024;
+    if (!Number.isSafeInteger(blockSize) || blockSize <= 0) throw new Error('Invalid ASAR integrity block size');
+    const blocks = [];
+    for (let offset = 0; offset < updatedPreload.length; offset += blockSize) blocks.push(sha256(updatedPreload.subarray(offset, offset + blockSize)));
+    preloadInfo.entry.offset = String(currentOffset);
+    preloadInfo.entry.size = updatedPreload.length;
+    preloadInfo.entry.integrity = { algorithm: 'SHA256', hash: sha256(updatedPreload), blockSize, blocks };
+    appends.push(updatedPreload);
+    currentOffset += updatedPreload.length;
+  }
+
+  const patched = encodeArchive(archive.header, Buffer.concat([archive.payload, ...appends]));
   return { buffer: patched, hash: readArchive(patched).headerHash, alreadyPatched: false };
 }
 
@@ -87,7 +199,10 @@ export function checkPatchStatus(customAppPath) {
   try {
     if (!result.appExists) throw new Error(`Antigravity.app not found at ${appPath}`);
     const archive = readArchive(fs.readFileSync(asarPath));
-    result.isPatched = launcherFromArchive(archive).content.toString('utf8').includes(PATCH_CODE);
+    const lsPatched = launcherFromArchive(archive).content.toString('utf8').includes(PATCH_CODE);
+    const preloadInfo = preloadFromArchive(archive);
+    const preloadPatched = preloadInfo === null || preloadInfo.content.toString('utf8').includes(PRELOAD_PATCH_MARKER);
+    result.isPatched = lsPatched && preloadPatched;
     const plistHash = run('/usr/libexec/PlistBuddy', ['-c', 'Print :ElectronAsarIntegrity:Resources/app.asar:hash', infoPlistPath]).trim();
     result.integrityMatches = plistHash.toLowerCase() === archive.headerHash;
     result.drMatches = run('/usr/bin/codesign', ['-d', '-r-', appPath]).includes('EQHXZ8M8AV');

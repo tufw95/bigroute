@@ -102,6 +102,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWorkspace.didWakeNotification,
             object: nil
         )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(applicationDidLaunch(_:)),
+            name: NSWorkspace.didLaunchApplicationNotification,
+            object: nil
+        )
         monitor.start()
     }
 
@@ -185,6 +191,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func workspaceDidWake() {
         monitor.refresh()
+    }
+
+    @objc private func applicationDidLaunch(_ notification: Notification) {
+        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              app.bundleIdentifier == "com.google.antigravity" || app.bundleURL?.lastPathComponent == "Antigravity.app" else { return }
+        monitor.handleAntigravityLaunched()
     }
 
     private func showPopover(relativeTo button: NSStatusBarButton? = nil) {

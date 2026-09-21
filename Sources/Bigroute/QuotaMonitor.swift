@@ -35,6 +35,7 @@ final class QuotaMonitor {
     var isRunningManualAction = false
     var isImportingAccounts = false
     var isSwitchingAntigravityBridge = false
+    private var isRepairingAntigravityBridge = false
     private(set) var isLoadingConfiguration = true
     var errorMessage: String?
     private(set) var configurationLoadError: String?
@@ -242,6 +243,47 @@ final class QuotaMonitor {
         }
     }
 
+    func handleAntigravityLaunched() {
+        guard configuration.antigravityBridge.isEnabled else { return }
+        Task { [weak self] in
+            await self?.checkAndRepairAntigravityBridge(relaunchIfNeeded: true)
+        }
+    }
+
+    func checkAndRepairAntigravityBridge(relaunchIfNeeded: Bool = false) async {
+        guard configuration.antigravityBridge.isEnabled,
+              !isSwitchingAntigravityBridge,
+              !isRepairingAntigravityBridge else { return }
+        isRepairingAntigravityBridge = true
+        defer { isRepairingAntigravityBridge = false }
+
+        let manager = AntigravityBridgeManager.shared
+        do {
+            let patchStatus = await manager.checkAntigravityPatchStatus()
+            guard patchStatus.appExists else { return }
+
+            if !patchStatus.isPatched {
+                Self.routingLogger.info("Antigravity is unpatched while bridge is enabled. Applying bridge patch...")
+                _ = try await manager.patchAntigravityIfNeeded()
+                if relaunchIfNeeded {
+                    Self.routingLogger.info("Relaunching Antigravity with freshly patched bridge...")
+                    try await manager.relaunchAntigravityApp()
+                    try await Task.sleep(for: .seconds(2))
+                }
+            }
+
+            if !manager.isCurrentlyPointedToBridge {
+                _ = try await manager.restoreBridgeForStartup()
+            }
+
+            try await manager.validateAntigravityConnection()
+            bridgeError = nil
+        } catch {
+            Self.routingLogger.error("Antigravity bridge check: \(error.localizedDescription, privacy: .public)")
+            bridgeError = error.localizedDescription
+        }
+    }
+
     func runManualAction(
         _ action: NineRouterAccountAction,
         provider: CustomQuotaProvider
@@ -423,6 +465,9 @@ final class QuotaMonitor {
             )
             isRefreshing = false
             refreshTask = nil
+            if self.configuration.antigravityBridge.isEnabled {
+                await self.checkAndRepairAntigravityBridge(relaunchIfNeeded: false)
+            }
             if refreshRequested {
                 refreshRequested = false
                 refresh(force: true)
