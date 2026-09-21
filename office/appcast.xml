@@ -6,6 +6,29 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Bigroute</title>
         <item>
+            <title>1.7.12</title>
+            <pubDate>Mon, 21 Sep 2026 02:50:43 +0000</pubDate>
+            <link>https://github.com/tufw95/bigroute</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/tufw95/bigroute/releases/tag/office-v1.7.12</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1007012</sparkle:version>
+            <sparkle:shortVersionString>1.7.12</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[
+### Fixed
+
+- **Automatic Bridge Recovery After Antigravity Updates**:
+  - Automatically detect when Antigravity updates and relaunches unpatched (`NSWorkspace.didLaunchApplicationNotification`). Bigroute immediately re-applies the ASAR patch and relaunches Antigravity with the bridge active, eliminating the need to manually toggle the bridge off and on.
+  - Background periodic refresh cycles also verify and repair the ASAR patch on disk so that subsequent restarts always connect to the bridge.
+
+### Added
+
+- **Visual Bridge Indicator in Antigravity UI**:
+  - The ASAR patcher now automatically injects a UI indicator into `dist/preload.js`. When Bigroute Bridge is active, the bottom-left **Settings** button and hover tooltips dynamically display as **Settings (Proxy)**, providing clear, real-time confirmation that the window is routed through Bigroute Bridge.
+
+]]></description>
+            <enclosure url="https://github.com/tufw95/bigroute/releases/download/office-v1.7.12/Bigroute-1.7.12.zip" length="3497107" type="application/octet-stream" sparkle:edSignature="ioib6bMcLrIwqAlPQA7Hc8uVnazuwYWJhkhoeK6/IbAkIKWkvmQxC7M8e0ZIj1YlF3bDZ6VftToWINaX+0pnBA=="/>
+        </item>
+        <item>
             <title>1.7.11</title>
             <pubDate>Fri, 18 Sep 2026 08:21:40 +0000</pubDate>
             <link>https://github.com/tufw95/bigroute</link>
@@ -147,6 +170,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: 7EIqB+/xPXnL+eMyhyLtt+q7vMGO3R5pgEsmaVIgvsRJ7tMNXdQ8TR/PwEjA+O57HIjD9dJwxzZKgfhHKxM+CA==
-length: 10669
+edSignature: hDmeycaS9lY73c5T1S7f10+gP0NGUoGL6LuzcYfx75cz1nTAzfYzj4S+TaEQST39l9tHMYO794IgTOhbowHoDw==
+length: 12430
 -->
