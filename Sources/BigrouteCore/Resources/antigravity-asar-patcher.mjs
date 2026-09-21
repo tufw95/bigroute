@@ -6,62 +6,38 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const PATCH_CODE = "(() => { try { const os = require('os'); const fs = require('fs'); const ep = fs.readFileSync(require('path').join(os.homedir(), '.gemini', 'antigravity', 'cloud_code_endpoint.txt'), 'utf8').trim(); if (ep) return ep; } catch (e) {} return process.env.ANTIGRAVITY_CLOUD_CODE_ENDPOINT || 'https://daily-cloudcode-pa.googleapis.com'; })()";
-export const PRELOAD_PATCH_MARKER = '/* BIGROUTE_PRELOAD_BRIDGE_INDICATOR */';
+export const PRELOAD_PATCH_MARKER = '/* BIGROUTE_PRELOAD_BRIDGE_INDICATOR_V2 */';
 const PRELOAD_PATCH_CODE = `${PRELOAD_PATCH_MARKER}
 (() => {
   try {
-    const fs = require('fs');
-    const path = require('path');
-    const os = require('os');
-    const epPath = path.join(os.homedir(), '.gemini', 'antigravity', 'cloud_code_endpoint.txt');
-
-    function isBridgeEndpointActive() {
-      try {
-        if (!fs.existsSync(epPath)) return false;
-        const ep = fs.readFileSync(epPath, 'utf8').trim();
-        return ep.includes('127.0.0.1:50999') || ep.includes('localhost:50999');
-      } catch (e) {
-        return false;
-      }
-    }
-
     function applyIndicator() {
-      const active = isBridgeEndpointActive();
-      const settingsBtn = document.querySelector('[data-testid="settings-button"], button[aria-label="Settings"], button[aria-label="Settings (Proxy)"]');
-      if (settingsBtn) {
-        const spans = settingsBtn.querySelectorAll('span');
-        for (const span of spans) {
-          const text = (span.textContent || '').trim();
-          if (active && text === 'Settings') {
-            span.textContent = 'Settings (Proxy)';
-          } else if (!active && text === 'Settings (Proxy)') {
-            span.textContent = 'Settings';
+      const candidates = document.querySelectorAll('[data-testid="settings-button"], button, a, [role="button"]');
+      for (const btn of candidates) {
+        const aria = btn.getAttribute('aria-label') || '';
+        const title = btn.getAttribute('title') || '';
+        const testid = btn.getAttribute('data-testid') || '';
+        if (testid === 'settings-button' || aria === 'Settings' || title === 'Settings' || aria === 'Settings (Proxy)' || title === 'Settings (Proxy)') {
+          const elements = btn.querySelectorAll('span, div, p');
+          let textFound = false;
+          for (const el of elements) {
+            const text = (el.textContent || '').trim();
+            if (text === 'Settings') {
+              el.textContent = 'Settings (Proxy)';
+              textFound = true;
+            }
           }
-        }
-        if (active) {
-          if (settingsBtn.getAttribute('aria-label') === 'Settings') {
-            settingsBtn.setAttribute('aria-label', 'Settings (Proxy)');
+          if (!textFound && btn.childNodes.length === 1 && btn.childNodes[0].nodeType === 3) {
+            if (btn.textContent.trim() === 'Settings') btn.textContent = 'Settings (Proxy)';
           }
-          if (settingsBtn.getAttribute('title') === 'Settings') {
-            settingsBtn.setAttribute('title', 'Settings (Proxy)');
-          }
-        } else {
-          if (settingsBtn.getAttribute('aria-label') === 'Settings (Proxy)') {
-            settingsBtn.setAttribute('aria-label', 'Settings');
-          }
-          if (settingsBtn.getAttribute('title') === 'Settings (Proxy)') {
-            settingsBtn.setAttribute('title', 'Settings');
-          }
+          if (btn.getAttribute('aria-label') === 'Settings') btn.setAttribute('aria-label', 'Settings (Proxy)');
+          if (btn.getAttribute('title') === 'Settings') btn.setAttribute('title', 'Settings (Proxy)');
         }
       }
 
-      const tooltips = document.querySelectorAll('[role="tooltip"], [data-tooltip]');
+      const tooltips = document.querySelectorAll('[role="tooltip"], [data-tooltip], [data-radix-popper-content-wrapper]');
       for (const tt of tooltips) {
-        const text = (tt.textContent || '').trim();
-        if (active && text === 'Settings') {
+        if ((tt.textContent || '').trim() === 'Settings') {
           tt.textContent = 'Settings (Proxy)';
-        } else if (!active && text === 'Settings (Proxy)') {
-          tt.textContent = 'Settings';
         }
       }
     }

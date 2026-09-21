@@ -4,6 +4,13 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.13] - 2026-09-21
+
+### Fixed
+
+- **Settings (Proxy) UI Indicator in Sandboxed Renderer**:
+  - Replaced Node.js filesystem dependency in `dist/preload.js` with pure DOM manipulation resilient to Electron's renderer sandbox (`--enable-sandbox`), ensuring the bottom-left **Settings** button and hover tooltips immediately display as **Settings (Proxy)** when routed through Bigroute Bridge.
+
 ## [1.7.12] - 2026-09-21
 
 ### Fixed

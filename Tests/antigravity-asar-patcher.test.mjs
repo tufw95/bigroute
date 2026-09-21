@@ -95,7 +95,7 @@ test('patches preload.js to inject bridge proxy indicator when present', () => {
   const next = readArchive(patched.buffer);
   const patchedPreloadEntry = next.header.files.dist.files['preload.js'];
   const patchedPreload = next.payload.subarray(Number(patchedPreloadEntry.offset), Number(patchedPreloadEntry.offset) + patchedPreloadEntry.size).toString('utf8');
-  assert.ok(patchedPreload.includes('BIGROUTE_PRELOAD_BRIDGE_INDICATOR'));
+  assert.ok(patchedPreload.includes('BIGROUTE_PRELOAD_BRIDGE_INDICATOR_V2'));
   assert.ok(patchedPreload.includes('Settings (Proxy)'));
 
   // Test idempotency
