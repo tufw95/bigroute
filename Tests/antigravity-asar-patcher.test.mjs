@@ -66,43 +66,6 @@ test('patch preserves packed files, links and unpacked metadata and is idempoten
   assert.deepEqual(patchArchive(patched.buffer), { buffer: patched.buffer, hash: patched.hash, alreadyPatched: true });
 });
 
-test('patches preload.js to inject bridge proxy indicator when present', () => {
-  const launcherContent = Buffer.from(source);
-  const preloadContent = Buffer.from('const x = 1;\n');
-  const header = { files: {
-    dist: { files: {
-      'languageServer.js': {
-        offset: '0', size: launcherContent.length,
-        integrity: { algorithm: 'SHA256', hash: hash(launcherContent), blockSize: 32, blocks: [] }
-      },
-      'preload.js': {
-        offset: String(launcherContent.length), size: preloadContent.length,
-        integrity: { algorithm: 'SHA256', hash: hash(preloadContent), blockSize: 32, blocks: [] }
-      }
-    } }
-  } };
-  const json = Buffer.from(JSON.stringify(header));
-  const padding = (4 - json.length % 4) % 4;
-  const prefix = Buffer.alloc(16);
-  prefix.writeUInt32LE(4, 0);
-  prefix.writeUInt32LE(8 + json.length + padding, 4);
-  prefix.writeUInt32LE(4 + json.length + padding, 8);
-  prefix.writeUInt32LE(json.length, 12);
-  const original = Buffer.concat([prefix, json, Buffer.alloc(padding), launcherContent, preloadContent]);
-
-  const patched = patchArchive(original);
-  assert.equal(patched.alreadyPatched, false);
-  const next = readArchive(patched.buffer);
-  const patchedPreloadEntry = next.header.files.dist.files['preload.js'];
-  const patchedPreload = next.payload.subarray(Number(patchedPreloadEntry.offset), Number(patchedPreloadEntry.offset) + patchedPreloadEntry.size).toString('utf8');
-  assert.ok(patchedPreload.includes('BIGROUTE_PRELOAD_BRIDGE_INDICATOR_V2'));
-  assert.ok(patchedPreload.includes('Settings (Proxy)'));
-
-  // Test idempotency
-  const doublePatched = patchArchive(patched.buffer);
-  assert.equal(doublePatched.alreadyPatched, true);
-});
-
 test('patched launcher reads endpoint override, environment fallback and official default', () => {
   const code = launcher(patchArchive(fixture()).buffer).toString();
   function evaluate(endpoint, environment = {}) {

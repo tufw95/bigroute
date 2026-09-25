@@ -4,6 +4,15 @@ All notable changes to Bigroute are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.14] - 2026-09-25
+
+### Removed
+
+- **Experimental DOM Injections in Preload Script**:
+  - Completely removed fragile DOM mutation code and preload script modifications from `antigravity-asar-patcher.mjs`.
+  - Reverted to standard, rock-solid launcher patching only (`dist/languageServer.js`), preventing any interference with Electron renderer sandboxing while preserving 100% reliable automated bridge patching and update recovery.
+  - Active proxy status continues to be clearly indicated inside Antigravity via the model picker (`(CLI Proxy)`) and the Bigroute menu-bar dashboard.
+
 ## [1.7.13] - 2026-09-21
 
 ### Fixed
